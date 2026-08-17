@@ -6,6 +6,7 @@
   import Labels from './pages/Labels.svelte'
   import Rules from './pages/Rules.svelte'
   import ThemeToggle from './lib/ThemeToggle.svelte'
+  import Icon from './lib/Icon.svelte'
   import './lib/theme'
 
   let authed = $state(pb.authStore.isValid)
@@ -15,10 +16,10 @@
   window.addEventListener('hashchange', () => (route = location.hash.slice(1) || '/'))
 
   const pages = [
-    ['/', 'Overview', Overview],
-    ['/transactions', 'Transactions', Transactions],
-    ['/labels', 'Categories & tags', Labels],
-    ['/rules', 'Rules', Rules],
+    ['/', 'Overview', Overview, 'overview', 'Overview'],
+    ['/transactions', 'Transactions', Transactions, 'transactions', 'Transactions'],
+    ['/labels', 'Categories & tags', Labels, 'labels', 'Labels'],
+    ['/rules', 'Rules', Rules, 'rules', 'Rules'],
   ] as const
   const Page = $derived(pages.find(p => p[0] === route)?.[2] ?? Overview)
 </script>
@@ -39,4 +40,11 @@
     <button onclick={() => pb.authStore.clear()}>Logout</button>
   </header>
   <main>{#key authed}<Page />{/key}</main>
+  <nav class="tabbar" aria-label="Main">
+    {#each pages as [path, , , icon, short]}
+      <a href={'#' + path} class:active={route === path} aria-current={route === path ? 'page' : undefined}>
+        <Icon name={icon} /><span>{short}</span>
+      </a>
+    {/each}
+  </nav>
 {/if}

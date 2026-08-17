@@ -78,13 +78,24 @@ button.link { border: 0; background: none; padding: 0; color: var(--link); }
 .login-wrap { position: relative; }
 .login-wrap .theme-toggle { position: absolute; top: .8rem; right: .8rem; }
 
+/* ---------- bottom tab bar (mobile only) ---------- */
+.tabbar { display: none; }
+@media (max-width: 720px) {
+  .tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; background: var(--panel);
+    border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .5rem 0 .4rem;
+    font-size: .68rem; color: var(--muted); text-decoration: none; }
+  .tabbar a.active { color: var(--fg); }
+  .tabbar a.active svg { color: var(--link); }
+  header.top nav { display: none; }
+  header.top .brand span { display: inline; }
+  main { padding-bottom: calc(4.2rem + env(safe-area-inset-bottom)); }
+}
+
 /* ---------- mobile ---------- */
-header.top nav { display: flex; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
-header.top nav::-webkit-scrollbar { display: none; }
 @media (max-width: 720px) {
   :root { font-size: 15px; }
   header.top { padding: .5rem .8rem; gap: .6rem; }
-  header.top .brand span { display: none; }           /* logo only */
   header.top .user { display: none; }
   main { padding: .8rem; }
   .panel { padding: .8rem; }
