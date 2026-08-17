@@ -23,19 +23,41 @@ var uiEmbed embed.FS
 
 const defaultAddr = "127.0.0.1:8070"
 
+// version is set at build time: -ldflags "-X main.version=v1.0.0"
+var version = "dev"
+
+func registrationOpen(app core.App) (bool, error) {
+	switch strings.ToLower(os.Getenv("MURMEL_REGISTRATION")) {
+	case "true", "1", "on", "yes":
+		return true, nil
+	case "false", "0", "off", "no":
+		return false, nil
+	}
+	n, err := app.CountRecords("users")
+	return n == 0, err
+}
+
 func main() {
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	app := pocketbase.New()
 
-	// Optionally close registration: MURMEL_REGISTRATION=false
-	if v := strings.ToLower(os.Getenv("MURMEL_REGISTRATION")); v == "false" || v == "0" || v == "off" {
-		app.OnRecordCreateRequest("users").BindFunc(func(e *core.RecordRequestEvent) error {
-			if !e.HasSuperuserAuth() {
-				return e.ForbiddenError("Registration is disabled on this instance.", nil)
-			}
+	// Registration policy (MURMEL_REGISTRATION):
+	//   "true"  → always open
+	//   "false" → always closed (superusers can still create users in /_/)
+	//   unset   → open until the first user exists, then closed
+	app.OnRecordCreateRequest("users").BindFunc(func(e *core.RecordRequestEvent) error {
+		if e.HasSuperuserAuth() {
 			return e.Next()
-		})
-	}
+		}
+		open, err := registrationOpen(e.App)
+		if err != nil {
+			return err
+		}
+		if !open {
+			return e.ForbiddenError("Registration is closed on this instance.", nil)
+		}
+		return e.Next()
+	})
 
 	// Every new user starts with the default tax rule; the very first user also
 	// adopts any records left over from a pre-multi-user database.
@@ -71,6 +93,14 @@ func main() {
 		if err != nil {
 			return err
 		}
+		// tiny public status endpoint so the login page knows whether to offer sign-up
+		e.Router.GET("/api/murmel/status", func(re *core.RequestEvent) error {
+			open, err := registrationOpen(re.App)
+			if err != nil {
+				return err
+			}
+			return re.JSON(200, map[string]any{"registration": open, "version": version})
+		})
 		e.Router.GET("/{path...}", apis.Static(ui, true))
 		return e.Next()
 	})

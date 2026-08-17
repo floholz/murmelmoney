@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: ui/package-lock.json }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod, cache: true }
+      - name: UI
+        working-directory: ui
+        run: |
+          npm ci
+          npx svelte-check --threshold error
+          npm run build
+      - name: Go
+        run: |
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o murmelmoney .

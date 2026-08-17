@@ -26,7 +26,7 @@ attach files and notes, and get a *rough* yearly tax estimate. Nothing else.
 | Frontend | Svelte 5 + Vite, plain CSS, `pocketbase` JS SDK | hash-based routing (`#/`, `#/transactions`, `#/rules`), no router lib |
 | Packaging | `//go:embed ui/dist` → served via `apis.Static(..., true)` | one static binary |
 | Docker | multi-stage: `node:alpine` (vite build) → `golang:alpine` (CGO off) → `scratch`/`alpine` | data volume at `/pb_data` |
-| Auth | PocketBase `users` collection | register + login in UI; every record has a `user` relation, API rules enforce `user = @request.auth.id`; `MURMEL_REGISTRATION=false` closes sign-ups |
+| Auth | PocketBase `users` collection | register + login in UI; every record has a `user` relation, API rules enforce `user = @request.auth.id`; registration open until the first user exists, `MURMEL_REGISTRATION=true/false` forces it; `GET /api/murmel/status` tells the login page |
 
 ## 3. Repository layout
 
@@ -69,7 +69,7 @@ finance/
 | `category` | relation → categories (single) | created on the fly from the form |
 | `tags` | relation → tags (multi) | created on the fly (chip picker) |
 | `note` | text | free-form, multiline |
-| `attachments` | file, multiple (max 10, 25 MB each) | pdf/images/any |
+| `attachments` | file, multiple (max 10, 25 MB each), **protected** | served only with a file token of the owner (`pb.files.getToken()`) |
 | `created`, `updated` | autodate | |
 
 API rules: owner-only (`@request.auth.id != '' && user = @request.auth.id`; create requires `@request.body.user = @request.auth.id`). Index on `(user, date)`.
@@ -211,6 +211,12 @@ EXPOSE 8070
 ENTRYPOINT ["/finance", "serve", "--http=0.0.0.0:8070", "--dir=/pb_data"]
 ```
 `docker-compose.yml`: one service, `./data:/pb_data`, env for admin bootstrap, `restart: unless-stopped`.
+
+## 8b. CI / release
+
+`.github/workflows/ci.yml` builds UI + Go on every push/PR. `release.yml` on a `v*` tag: cross-compiled binaries
+(linux/darwin/windows, `-X main.version`) attached to a GitHub release + multi-arch image pushed to
+`ghcr.io/floholz/murmelmoney:{version,major.minor,latest}`.
 
 ## 9. Implementation order
 

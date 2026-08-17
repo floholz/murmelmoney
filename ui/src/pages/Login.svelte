@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { pb } from '../lib/pb'
+  import { pb, status } from '../lib/pb'
   let mode = $state<'login' | 'register'>('login')
+  let canRegister = $state(false)
+  status().then(s => (canRegister = s.registration)).catch(() => {})
   let email = $state(''), password = $state(''), confirm = $state(''), name = $state('')
   let error = $state(''), busy = $state(false)
 
@@ -21,10 +23,12 @@
 
 <div class="panel login">
   <h1 class="brand"><img src="/logo.svg" alt="" /> murmelmoney</h1>
-  <div class="row seg" style="margin-bottom:.8rem">
-    <button type="button" class:on={mode === 'login'} onclick={() => (mode = 'login')}>Sign in</button>
-    <button type="button" class:on={mode === 'register'} onclick={() => (mode = 'register')}>Register</button>
-  </div>
+  {#if canRegister}
+    <div class="row seg" style="margin-bottom:.8rem">
+      <button type="button" class:on={mode === 'login'} onclick={() => (mode = 'login')}>Sign in</button>
+      <button type="button" class:on={mode === 'register'} onclick={() => (mode = 'register')}>Register</button>
+    </div>
+  {/if}
   <form onsubmit={submit} class="row" style="flex-direction:column; align-items:stretch">
     {#if mode === 'register'}
       <label class="field">Name (optional) <input bind:value={name} autocomplete="name" /></label>

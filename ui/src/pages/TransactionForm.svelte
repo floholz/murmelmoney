@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { pb, uid, AREAS, fileUrl, ensureLabel, categoryName, tagNames, type Transaction, type TxType, type Area, type Category, type Tag } from '../lib/pb'
+  import { pb, uid, AREAS, fileUrl, fileToken, ensureLabel, categoryName, tagNames, type Transaction, type TxType, type Area, type Category, type Tag } from '../lib/pb'
   import { today, isoDate } from '../lib/format'
   import TagPicker from '../lib/TagPicker.svelte'
 
@@ -22,6 +22,8 @@
   let removed = $state<string[]>([])
   let newFiles = $state<File[]>([])
   let over = $state(false), busy = $state(false), error = $state('')
+  let token = $state('')
+  if (existing.length) fileToken().then(t => (token = t)).catch(() => {})
 
   function addFiles(list: FileList | null) {
     if (list) newFiles = [...newFiles, ...Array.from(list)]
@@ -88,7 +90,7 @@
       </label>
       <ul class="files">
         {#each existing as f}
-          <li class="row"><a href={fileUrl(tx!, f)} target="_blank" rel="noopener">{f}</a>
+          <li class="row"><a href={token ? fileUrl(tx!, f, token) : undefined} target="_blank" rel="noopener" aria-disabled={!token}>{f}</a>
             <button type="button" class="link danger" onclick={() => { existing = existing.filter(x => x !== f); removed = [...removed, f] }}>remove</button></li>
         {/each}
         {#each newFiles as f, i}

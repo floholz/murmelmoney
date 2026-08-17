@@ -30,7 +30,12 @@ export interface Rule extends RecordModel {
   active: boolean
 }
 
-export const fileUrl = (rec: RecordModel, name: string) => pb.files.getURL(rec, name)
+/** Attachments are protected: URLs need a short-lived file token of the owning user. */
+export const fileUrl = (rec: RecordModel, name: string, token: string) => pb.files.getURL(rec, name, { token })
+export const fileToken = () => pb.files.getToken()
+
+export interface Status { registration: boolean; version: string }
+export const status = (): Promise<Status> => pb.send('/api/murmel/status', { method: 'GET' })
 export const categoryName = (t: Transaction) => t.expand?.category?.name ?? ''
 export const tagNames = (t: Transaction) => t.expand?.tags?.map(x => x.name) ?? []
 

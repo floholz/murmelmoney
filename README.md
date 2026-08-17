@@ -9,7 +9,7 @@ aside for tax.
 - add **incomes & expenses**, split into *business* / *rental* / *private*
 - one **category** per transaction (Honorarnote, Software, Repairs…) and any number of **tags**
   (client, project, cost point, the house…) — both created on the fly
-- attach **files** (receipts, invoices) and **notes** to every transaction
+- attach **files** (receipts, invoices, only fetchable by their owner) and **notes** to every transaction
 - yearly **overview** by area, category and tag
 - **rough tax estimate** driven by a small JavaScript rule you can edit in the UI
   (ships with an Austrian freelancer + landlord example)
@@ -22,15 +22,19 @@ Explicitly *not*: bank sync, budgeting, multi-currency, real accounting.
 ## Run
 
 ```sh
-docker compose up -d        # edit MURMEL_ADMIN_* in docker-compose.yml first
+docker compose up -d        # uses ghcr.io/floholz/murmelmoney (or `build: .`)
 # → http://localhost:8070   (PocketBase admin UI at /_/)
 ```
+
+Prebuilt binaries for Linux/macOS/Windows are on the [releases page](https://github.com/floholz/murmelmoney/releases).
 
 Or the bare binary: `make build && MURMEL_ADMIN_EMAIL=… MURMEL_ADMIN_PASSWORD=… ./murmelmoney serve`.
 
 Open the app and **register** your account (every user gets their own categories, tags,
-transactions and tax rules). Set `MURMEL_REGISTRATION=false` once everyone is on board to close
-sign-ups. `MURMEL_ADMIN_EMAIL` / `MURMEL_ADMIN_PASSWORD` optionally create the PocketBase superuser
+transactions and tax rules). By default sign-up is open only until the first user exists;
+set `MURMEL_REGISTRATION=true` to keep it open (e.g. for family/friends) or `false` to force it
+closed. Forgot your password? Reset it in the PocketBase admin UI (`/_/` → users), or configure
+SMTP there to enable self-service resets. `MURMEL_ADMIN_EMAIL` / `MURMEL_ADMIN_PASSWORD` optionally create the PocketBase superuser
 for the admin UI at `/_/` (or `./murmelmoney superuser upsert <email> <pw>`).
 Everything lives in `./data` (`/pb_data` in the container) — back that folder up
 (PocketBase's built-in backups in the admin UI work too).
