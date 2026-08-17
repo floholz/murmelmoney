@@ -5,6 +5,7 @@ import (
 	"embed"
 	"io/fs"
 	"log"
+	"mime"
 	"os"
 	"strings"
 
@@ -20,6 +21,7 @@ import (
 var uiEmbed embed.FS
 
 func main() {
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	app := pocketbase.New()
 
 	// Optionally close registration: MURMEL_REGISTRATION=false

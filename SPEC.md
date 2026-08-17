@@ -108,6 +108,15 @@ API rules: owner-only (`@request.auth.id != '' && user = @request.auth.id`; crea
 - Editor: name, textarea for script (monospace), "Run against year N" preview, save
 - "Reset to default" restores the shipped Austrian rule
 
+## 5b. Mobile & PWA
+
+- Responsive CSS (`@media (max-width: 720px)`): logo-only header with horizontally scrolling nav, 2-column filters,
+  transactions table rendered as cards, full-screen modal, ≥2.4rem touch targets.
+- PWA via `vite-plugin-pwa` (`generateSW`, autoUpdate): `manifest.webmanifest` (standalone, theme `#ffea00`), icons
+  generated from the logo (`ui/public/pwa-*.png`, maskable variants, apple-touch-icon), service worker precaches the
+  built UI only; `/api/**` and `/_/**` are never cached (`navigateFallbackDenylist`). Go serves `.webmanifest`
+  with `application/manifest+json`.
+
 ## 6. Tax scripting
 
 Deliberately *not* encoding tax law in Go. The frontend aggregates the year and hands a plain object

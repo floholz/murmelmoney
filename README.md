@@ -15,6 +15,7 @@ aside for tax.
   (ships with an Austrian freelancer + landlord example)
 - multi-user (register / login, data strictly per user), single binary, single SQLite file —
   Go + [PocketBase](https://pocketbase.io) + Svelte
+- mobile-friendly, installable as a **PWA** (add to home screen; the UI shell is cached, data is always live)
 
 Explicitly *not*: bank sync, budgeting, multi-currency, real accounting.
 

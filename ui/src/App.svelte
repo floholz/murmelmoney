@@ -27,14 +27,14 @@
   <div class="login-wrap"><ThemeToggle /><Login /></div>
 {:else}
   <header class="top">
-    <a class="brand" href="#/"><img src="/logo.svg" alt="" /> murmelmoney</a>
+    <a class="brand" href="#/"><img src="/logo.svg" alt="murmelmoney" /><span>murmelmoney</span></a>
     <nav>
       {#each pages as [path, label]}
         <a href={'#' + path} class:active={route === path}>{label}</a>
       {/each}
     </nav>
     <span class="spacer"></span>
-    <span class="muted small">{pb.authStore.record?.name || pb.authStore.record?.email}</span>
+    <span class="muted small user">{pb.authStore.record?.name || pb.authStore.record?.email}</span>
     <ThemeToggle />
     <button onclick={() => pb.authStore.clear()}>Logout</button>
   </header>

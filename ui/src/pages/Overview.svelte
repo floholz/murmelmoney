@@ -59,7 +59,7 @@
     <table><tbody>
       {#each lines as l}
         <tr><td>{l.label}{#if l.hint}<div class="muted small">{l.hint}</div>{/if}</td>
-          <td class="num" style="width:12rem">{typeof l.value === 'number' ? money(l.value) : l.value}</td></tr>
+          <td class="num val">{typeof l.value === 'number' ? money(l.value) : l.value}</td></tr>
       {/each}
     </tbody></table>
     <p class="muted small" style="margin:.6rem 0 0">Rough estimate only — see <a href="#/rules">Rules</a> to adjust the assumptions.</p>

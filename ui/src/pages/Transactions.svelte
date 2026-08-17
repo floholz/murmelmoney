@@ -32,8 +32,8 @@
   }
 </script>
 
-<div class="row" style="justify-content:space-between; margin-bottom:.8rem">
-  <div class="row">
+<div class="row toolbar" style="justify-content:space-between; margin-bottom:.8rem">
+  <div class="row filters" style="flex:1">
     <select bind:value={year}>{#each years as y}<option value={y}>{y}</option>{/each}</select>
     <select bind:value={type}><option value="">all types</option><option value="income">income</option><option value="expense">expense</option></select>
     <select bind:value={area}><option value="">all areas</option>{#each AREAS as a}<option value={a}>{a}</option>{/each}</select>
@@ -41,7 +41,7 @@
     <select bind:value={tag}><option value="">all tags</option>{#each tags as t}<option value={t.id}>{t.name}</option>{/each}</select>
     <input placeholder="search" bind:value={q} style="width:9rem" />
   </div>
-  <div class="row">
+  <div class="row actions" style="margin-left:auto">
     <button class="primary" onclick={() => open(null, 'income')}>+ Income</button>
     <button class="primary" onclick={() => open(null, 'expense')}>+ Expense</button>
   </div>
@@ -50,18 +50,18 @@
 {#if error}<div class="error">{error}</div>{/if}
 
 <div class="panel table-wrap">
-  <table>
+  <table class="tx">
     <thead><tr><th>Date</th><th>Area</th><th>Category</th><th>Tags</th><th>Note</th><th></th><th class="num">Amount</th></tr></thead>
     <tbody>
       {#each shown as t (t.id)}
         <tr class="clickable" onclick={() => open(t)}>
-          <td class="num">{isoDate(t.date)}</td>
-          <td><span class="tag">{t.area}</span></td>
-          <td>{categoryName(t)}</td>
-          <td><div class="tags-cell">{#each tagNames(t) as n}<span class="tag chip">{n}</span>{/each}</div></td>
-          <td class="muted small" style="max-width:20rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{t.note}</td>
-          <td class="muted small">{t.attachments.length ? '📎 ' + t.attachments.length : ''}</td>
-          <td class="num {t.type}">{signed(t.amount, t.type)}</td>
+          <td class="num date">{isoDate(t.date)}</td>
+          <td class="area"><span class="tag">{t.area}</span></td>
+          <td class="category">{categoryName(t)}</td>
+          <td class="tags">{#if t.tags.length}<div class="tags-cell">{#each tagNames(t) as n}<span class="tag chip">{n}</span>{/each}</div>{/if}</td>
+          <td class="muted small note" style="max-width:20rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{t.note}</td>
+          <td class="muted small files">{t.attachments.length ? '📎 ' + t.attachments.length : ''}</td>
+          <td class="num amount {t.type}">{signed(t.amount, t.type)}</td>
         </tr>
       {:else}
         <tr><td colspan="7" class="muted">No transactions{txs.length ? ' match the filter' : ' in ' + year}.</td></tr>
