@@ -2,6 +2,7 @@
   import { loadYear, availableYears, loadCategories, loadTags, categoryName, tagNames, AREAS, type Transaction, type TxType, type Area, type Category, type Tag } from '../lib/pb'
   import { signed, isoDate } from '../lib/format'
   import TransactionForm from './TransactionForm.svelte'
+  import TransactionDetail from './TransactionDetail.svelte'
 
   let years = $state<number[]>([new Date().getFullYear()])
   let year = $state(new Date().getFullYear())
@@ -9,6 +10,7 @@
   let categories = $state<Category[]>([]), tags = $state<Tag[]>([])
   let type = $state<TxType | ''>(''), area = $state<Area | ''>(''), cat = $state(''), tag = $state(''), q = $state('')
   let editing = $state<Transaction | null | undefined>(undefined) // undefined = closed, null = new
+  let viewing = $state<Transaction | null>(null)
   let newType = $state<TxType>('expense')
   let error = $state('')
 
@@ -25,11 +27,12 @@
     (!q || (categoryName(t) + ' ' + tagNames(t).join(' ') + ' ' + t.note).toLowerCase().includes(q.toLowerCase()))))
   const sum = $derived(shown.reduce((s, t) => s + (t.type === 'income' ? t.amount : -t.amount), 0))
 
-  function open(t: Transaction | null, tp: TxType = 'expense') { newType = tp; editing = t }
+  function open(t: Transaction | null, tp: TxType = 'expense') { newType = tp; viewing = null; editing = t }
   async function closed(changed: boolean) {
     editing = undefined
     if (changed) { await refresh(); years = await availableYears() }
   }
+  async function deleted() { viewing = null; await refresh(); years = await availableYears() }
 </script>
 
 <div class="row toolbar" style="justify-content:space-between; margin-bottom:.8rem">
@@ -54,7 +57,7 @@
     <thead><tr><th>Date</th><th>Area</th><th>Category</th><th>Tags</th><th>Note</th><th></th><th class="num">Amount</th></tr></thead>
     <tbody>
       {#each shown as t (t.id)}
-        <tr class="clickable" onclick={() => open(t)}>
+        <tr class="clickable" onclick={() => (viewing = t)}>
           <td class="num date">{isoDate(t.date)}</td>
           <td class="area"><span class="tag">{t.area}</span></td>
           <td class="category">{categoryName(t)}</td>
@@ -73,6 +76,9 @@
   </table>
 </div>
 
+{#if viewing}
+  <TransactionDetail tx={viewing} onclose={() => (viewing = null)} onedit={() => open(viewing)} ondeleted={deleted} />
+{/if}
 {#if editing !== undefined}
   <TransactionForm tx={editing} defaultType={newType} {categories} {tags} onclose={closed} />
 {/if}

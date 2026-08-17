@@ -91,7 +91,8 @@ API rules: owner-only (`@request.auth.id != '' && user = @request.auth.id`; crea
 **Transactions (`#/transactions`)**
 - Filters: year (default current), type, area, text search (category/note)
 - Table: date · type · area · category · amount · 📎 count · note preview; click row → edit
-- "New income" / "New expense" buttons open the same form (modal or inline)
+- Row click → read-only **detail view** (amount, date, area, category, tags, full note, attachment grid with image previews; Edit / Delete / Close)
+- "New income" / "New expense" buttons open the form; Edit in the detail view opens the same form
 - Form: type, date, amount, area, category (datalist), note (textarea), file dropzone (multi), existing attachments with open/delete
 - Delete with confirm
 

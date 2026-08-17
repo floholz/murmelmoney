@@ -124,3 +124,14 @@ button.link { border: 0; background: none; padding: 0; color: var(--link); }
   table.tx tfoot tr { display: flex; justify-content: space-between; border: 0; }
   table.tx tfoot th { border: 0; padding: .4rem 0 0; }
 }
+
+/* ---------- transaction detail ---------- */
+.detail .amount { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.detail h3 { margin-top: .9rem; }
+.note-text { white-space: pre-wrap; margin: 0; }
+.attachments { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .6rem; }
+.attachment { display: flex; flex-direction: column; gap: .3rem; text-decoration: none; color: var(--fg); min-width: 0; }
+.attachment span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.attachment img, .attachment .filebox { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); }
+.attachment .filebox { display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--muted); letter-spacing: .05em; }
+.attachment:hover img, .attachment:hover .filebox { border-color: var(--link); }

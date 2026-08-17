@@ -1,7 +1,7 @@
 services:
   murmelmoney:
     image: ghcr.io/floholz/murmelmoney:latest
-    # build: .
+    build: .
     container_name: murmelmoney
     restart: unless-stopped
     ports:
@@ -11,7 +11,7 @@ services:
     environment:
       # registration: unset = open until the first user exists, then closed;
       # "true" = always open, "false" = always closed
-      # MURMEL_REGISTRATION: "true"
+      MURMEL_REGISTRATION: "true"
       # optional: PocketBase superuser for the admin UI at /_/ (created once, on first start)
       # MURMEL_ADMIN_EMAIL: you@example.com
       # MURMEL_ADMIN_PASSWORD: change-me-please
