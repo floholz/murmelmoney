@@ -1,5 +1,5 @@
 # --- UI -----------------------------------------------------------------------
-FROM node:22-alpine AS ui
+FROM --platform=$BUILDPLATFORM node:22-alpine AS ui
 WORKDIR /ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci
@@ -7,14 +7,16 @@ COPY ui .
 RUN npm run build
 
 # --- Go -----------------------------------------------------------------------
-FROM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=ui /ui/dist ./ui/dist
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /murmelmoney .
+ARG TARGETOS TARGETARCH
+# cross-compile on the build host instead of emulating the target (much faster under buildx)
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /murmelmoney .
 
 # --- Runtime ------------------------------------------------------------------
 FROM alpine:3.21
