@@ -26,7 +26,8 @@ docker compose up -d        # uses ghcr.io/floholz/murmelmoney (or `build: .`)
 # → http://localhost:8070   (PocketBase admin UI at /_/)
 ```
 
-Prebuilt binaries for Linux/macOS/Windows are on the [releases page](https://github.com/floholz/murmelmoney/releases).
+Prebuilt binaries for Linux/macOS/Windows are on the [releases page](https://github.com/floholz/murmelmoney/releases);
+what changed between versions is in the [changelog](CHANGELOG.md).
 
 Or the bare binary: `make build && MURMEL_ADMIN_EMAIL=… MURMEL_ADMIN_PASSWORD=… ./murmelmoney serve`.
 
