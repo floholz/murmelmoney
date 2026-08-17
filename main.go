@@ -12,6 +12,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/cmd"
 	"github.com/pocketbase/pocketbase/core"
 
 	"github.com/floholz/murmelmoney/migrations"
@@ -19,6 +20,8 @@ import (
 
 //go:embed all:ui/dist
 var uiEmbed embed.FS
+
+const defaultAddr = "127.0.0.1:8070"
 
 func main() {
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
@@ -72,7 +75,16 @@ func main() {
 		return e.Next()
 	})
 
-	if err := app.Start(); err != nil {
+	// Same as app.Start(), but with our own default listen address.
+	app.RootCmd.AddCommand(cmd.NewSuperuserCommand(app))
+	serve := cmd.NewServeCommand(app, true)
+	if f := serve.PersistentFlags().Lookup("http"); f != nil {
+		_ = f.Value.Set(defaultAddr)
+		f.DefValue = defaultAddr
+		f.Usage = "TCP address to listen for the HTTP server"
+	}
+	app.RootCmd.AddCommand(serve)
+	if err := app.Execute(); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -38,6 +38,6 @@ export default defineConfig({
   ],
   server: {
     // during `npm run dev` proxy the API to the Go binary (`go run . serve`)
-    proxy: { '/api': 'http://127.0.0.1:8090', '/_': 'http://127.0.0.1:8090' },
+    proxy: { '/api': 'http://127.0.0.1:8070', '/_': 'http://127.0.0.1:8070' },
   },
 })

@@ -1,8 +1,8 @@
 .PHONY: dev ui build docker clean
 
-# terminal 1: make dev   (Go API on :8090)   terminal 2: cd ui && npm run dev (Vite on :5173, proxies /api)
+# terminal 1: make dev   (Go API on :8070)   terminal 2: cd ui && npm run dev (Vite on :5173, proxies /api)
 dev:
-	go run . serve --http=127.0.0.1:8090 --dir=./pb_data
+	go run . serve --dir=./pb_data
 
 ui:
 	cd ui && npm ci && npm run build

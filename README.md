@@ -23,7 +23,7 @@ Explicitly *not*: bank sync, budgeting, multi-currency, real accounting.
 
 ```sh
 docker compose up -d        # edit MURMEL_ADMIN_* in docker-compose.yml first
-# → http://localhost:8090   (PocketBase admin UI at /_/)
+# → http://localhost:8070   (PocketBase admin UI at /_/)
 ```
 
 Or the bare binary: `make build && MURMEL_ADMIN_EMAIL=… MURMEL_ADMIN_PASSWORD=… ./murmelmoney serve`.
@@ -56,7 +56,7 @@ sandboxing.
 ## Develop
 
 ```sh
-make dev                 # Go API + embedded UI on :8090
+make dev                 # Go API + embedded UI on :8070
 cd ui && npm i && npm run dev   # Vite dev server on :5173 with API proxy
 ```
 

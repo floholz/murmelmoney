@@ -5,7 +5,7 @@ services:
     container_name: murmelmoney
     restart: unless-stopped
     ports:
-      - "8070:8090"
+      - "8070:8070"
     volumes:
       - ./data:/pb_data
     environment:

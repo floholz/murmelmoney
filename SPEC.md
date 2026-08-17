@@ -178,7 +178,7 @@ their own copy without touching the app.
 - Superuser bootstrap on `OnServe`: if `FINANCE_ADMIN_EMAIL` + `FINANCE_ADMIN_PASSWORD` are set and
   no superuser exists → create it. Otherwise fall back to `./finance superuser upsert <email> <pw>`.
 - Static: `e.Router.GET("/{path...}", apis.Static(uiFS, true))` with `uiFS = fs.Sub(embed, "ui/dist")`.
-- Env: `PB_DATA=/pb_data` (data dir), `PORT` (default 8090). Admin UI stays available at `/_/`.
+- Env: `PB_DATA=/pb_data` (data dir), default listen address `127.0.0.1:8070` (override with `--http`). Admin UI stays available at `/_/`.
 - Optional: nightly `pb_data` backup via PocketBase's built-in backups (config in admin UI) — no code.
 
 ## 7b. Migrations policy
@@ -207,8 +207,8 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=build /finance /finance
 VOLUME /pb_data
-EXPOSE 8090
-ENTRYPOINT ["/finance", "serve", "--http=0.0.0.0:8090", "--dir=/pb_data"]
+EXPOSE 8070
+ENTRYPOINT ["/finance", "serve", "--http=0.0.0.0:8070", "--dir=/pb_data"]
 ```
 `docker-compose.yml`: one service, `./data:/pb_data`, env for admin bootstrap, `restart: unless-stopped`.
 

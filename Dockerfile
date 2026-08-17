@@ -20,5 +20,5 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=build /murmelmoney /murmelmoney
 VOLUME /pb_data
-EXPOSE 8090
-ENTRYPOINT ["/murmelmoney", "serve", "--http=0.0.0.0:8090", "--dir=/pb_data"]
+EXPOSE 8070
+ENTRYPOINT ["/murmelmoney", "serve", "--http=0.0.0.0:8070", "--dir=/pb_data"]
