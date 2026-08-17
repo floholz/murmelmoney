@@ -5,6 +5,8 @@
   import Transactions from './pages/Transactions.svelte'
   import Labels from './pages/Labels.svelte'
   import Rules from './pages/Rules.svelte'
+  import ThemeToggle from './lib/ThemeToggle.svelte'
+  import './lib/theme'
 
   let authed = $state(pb.authStore.isValid)
   pb.authStore.onChange(() => (authed = pb.authStore.isValid))
@@ -22,7 +24,7 @@
 </script>
 
 {#if !authed}
-  <Login />
+  <div class="login-wrap"><ThemeToggle /><Login /></div>
 {:else}
   <header class="top">
     <a class="brand" href="#/"><img src="/logo.svg" alt="" /> murmelmoney</a>
@@ -33,6 +35,7 @@
     </nav>
     <span class="spacer"></span>
     <span class="muted small">{pb.authStore.record?.name || pb.authStore.record?.email}</span>
+    <ThemeToggle />
     <button onclick={() => pb.authStore.clear()}>Logout</button>
   </header>
   <main>{#key authed}<Page />{/key}</main>
