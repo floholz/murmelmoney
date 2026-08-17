@@ -1,0 +1,6 @@
+const eur = new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR' })
+export const money = (n: number) => eur.format(n)
+export const signed = (n: number, type: 'income' | 'expense') => (type === 'expense' ? '−' : '+') + eur.format(Math.abs(n))
+export const isoDate = (d: string | Date) => new Date(d).toISOString().slice(0, 10)
+export const today = () => isoDate(new Date())
+export const yearOf = (d: string) => new Date(d).getFullYear()
