@@ -27,9 +27,11 @@
   <div class="modal detail">
     <div class="row" style="justify-content:space-between; align-items:flex-start; margin-bottom:.8rem">
       <div>
-        <div class="muted small">{isoDate(tx.date)} · <span class="tag">{tx.area}</span></div>
+        <div class="muted small">{isoDate(tx.date)} · <span class="tag">{tx.area}</span>
+          {#if tx.recurring}<span class="tag">recurring</span>{/if}</div>
         <div class="amount {tx.type}">{tx.type === 'expense' ? '−' : '+'}{money(tx.amount)}</div>
         {#if categoryName(tx)}<div style="font-weight:600">{categoryName(tx)}</div>{/if}
+        {#if tx.loan}<div class="muted small">Loan payment{#if tx.expand?.loan} — {tx.expand.loan.name}{/if}{#if tx.loan_interest} · {money(tx.loan_interest)} interest{/if}</div>{/if}
       </div>
       <button type="button" class="link" onclick={onclose} aria-label="Close" style="font-size:1.4rem; line-height:1">×</button>
     </div>

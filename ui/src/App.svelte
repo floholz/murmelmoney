@@ -3,6 +3,8 @@
   import Login from './pages/Login.svelte'
   import Overview from './pages/Overview.svelte'
   import Transactions from './pages/Transactions.svelte'
+  import Recurring from './pages/Recurring.svelte'
+  import Loans from './pages/Loans.svelte'
   import Labels from './pages/Labels.svelte'
   import Rules from './pages/Rules.svelte'
   import ThemeToggle from './lib/ThemeToggle.svelte'
@@ -18,6 +20,8 @@
   const pages = [
     ['/', 'Overview', Overview, 'overview', 'Overview'],
     ['/transactions', 'Transactions', Transactions, 'transactions', 'Transactions'],
+    ['/recurring', 'Recurring', Recurring, 'recurring', 'Repeat'],
+    ['/loans', 'Loans', Loans, 'loans', 'Loans'],
     ['/labels', 'Categories & tags', Labels, 'labels', 'Labels'],
     ['/rules', 'Rules', Rules, 'rules', 'Rules'],
   ] as const

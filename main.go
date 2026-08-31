@@ -85,10 +85,24 @@ func main() {
 		return e.Next()
 	})
 
+	// Materialize due recurring transactions right after a template is created
+	// or edited, so backfill is visible without waiting for the daily cron.
+	app.OnRecordAfterCreateSuccess("recurring").BindFunc(func(e *core.RecordEvent) error {
+		generateTemplate(e.App, e.Record)
+		return e.Next()
+	})
+	app.OnRecordAfterUpdateSuccess("recurring").BindFunc(func(e *core.RecordEvent) error {
+		generateTemplate(e.App, e.Record)
+		return e.Next()
+	})
+
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		if err := bootstrapSuperuser(app); err != nil {
 			return err
 		}
+		// Daily rollover (00:10 UTC) + catch-up for downtime at boot.
+		app.Cron().MustAdd("recurring", "10 0 * * *", func() { generateRecurring(app) })
+		go generateRecurring(app)
 		ui, err := fs.Sub(uiEmbed, "ui/dist")
 		if err != nil {
 			return err

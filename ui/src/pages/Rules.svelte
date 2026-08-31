@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { pb, uid, loadYear, availableYears, type Rule } from '../lib/pb'
+  import { pb, uid, loadYear, loadRecurring, availableYears, type Rule } from '../lib/pb'
   import { money } from '../lib/format'
   import { aggregate, runRule, type RuleLine } from '../lib/tax'
 
@@ -35,7 +35,7 @@
   }
   async function run() {
     previewError = ''
-    try { preview = runRule(script, aggregate(year, await loadYear(year))) }
+    try { preview = runRule(script, aggregate(year, await loadYear(year), { recurring: await loadRecurring() })) }
     catch (e: any) { preview = []; previewError = e.message }
   }
 </script>
@@ -43,7 +43,9 @@
 <h1>Tax rules</h1>
 <p class="muted small">A rule is the body of a JavaScript function that receives the yearly aggregate <code>d</code>
   (<code>d.income, d.expenses, d.net, d.area.business|rental|private.{'{income,expenses,net}'}, d.category[name], d.tag[name], d.transactions[]</code>)
-  and returns an array of <code>{'{ label, value, hint? }'}</code> lines. Numeric values are shown as €. The <b>active</b> rule is used on the overview.</p>
+  and returns an array of <code>{'{ label, value, hint? }'}</code> lines. Numeric values are shown as €. The <b>active</b> rule is used on the overview.
+  <code>d.projected</code> (may be <code>undefined</code>) holds the still-planned recurring amounts of the year:
+  <code>{'{income, expenses, net, area}'}</code> — add it to the actuals for a year-end estimate.</p>
 
 <div class="row" style="align-items:flex-start; gap:1rem">
   <div class="panel" style="min-width:220px">

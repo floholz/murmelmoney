@@ -1,4 +1,5 @@
-import { AREAS, categoryName, tagNames, type Area, type Transaction } from './pb'
+import { AREAS, categoryName, tagNames, type Area, type Recurring, type Transaction } from './pb'
+import { projectRecurring, type Projection } from './recurring'
 
 export interface Bucket { income: number; expenses: number; net: number }
 export interface TxLite { date: string; type: 'income' | 'expense'; area: Area; category: string; tags: string[]; amount: number }
@@ -11,6 +12,8 @@ export interface Aggregate {
   category: Record<string, Bucket>
   tag: Record<string, Bucket>
   transactions: TxLite[]
+  /** Planned recurring amounts for the rest of the year (only when templates were passed in). */
+  projected?: Projection
 }
 export interface RuleLine { label: string; value: number | string; hint?: string }
 
@@ -21,7 +24,7 @@ const add = (b: Bucket, t: { type: 'income' | 'expense'; amount: number }) => {
   b.net = b.income - b.expenses
 }
 
-export function aggregate(year: number, txs: Transaction[]): Aggregate {
+export function aggregate(year: number, txs: Transaction[], opts?: { recurring?: Recurring[] }): Aggregate {
   const a: Aggregate = {
     year, income: 0, expenses: 0, net: 0,
     area: Object.fromEntries(AREAS.map(x => [x, bucket()])) as Record<Area, Bucket>,
@@ -38,6 +41,7 @@ export function aggregate(year: number, txs: Transaction[]): Aggregate {
     a.transactions.push(lite)
   }
   Object.assign(a, { income: total.income, expenses: total.expenses, net: total.net })
+  if (opts?.recurring) a.projected = projectRecurring(opts.recurring, year)
   return a
 }
 

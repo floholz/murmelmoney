@@ -43,7 +43,7 @@
 <h1>Categories & tags</h1>
 <p class="muted small">A transaction has one <b>category</b> (what kind: Honorarnote, Software, Repairs…) and any number of
   <b>tags</b> (what it belongs to: a client, a project, a cost point, the house…). Both are created on the fly in the
-  transaction form; here you can rename or delete them.</p>
+  transaction form; here you can rename or delete them. Usage counts cover transactions only, not recurring templates.</p>
 {#if error}<div class="error small">{error}</div>{/if}
 
 <div class="row" style="align-items:flex-start; gap:1rem">

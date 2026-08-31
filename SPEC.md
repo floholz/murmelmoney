@@ -74,6 +74,36 @@ finance/
 
 API rules: owner-only (`@request.auth.id != '' && user = @request.auth.id`; create requires `@request.body.user = @request.auth.id`). Index on `(user, date)`.
 
+### `recurring` (base) — templates for auto-generated transactions
+| field | type | notes |
+|---|---|---|
+| `user` | relation → users | required, cascade delete |
+| `type` / `amount` / `area` / `category` / `tags` / `note` | | same shapes as on `transactions`; copied into each generated transaction |
+| `interval` | select `weekly` \| `monthly` \| `quarterly` \| `yearly` | required |
+| `start` | date | required; occurrence *n* is always `start + n·interval` (day-of-month clamped to shorter months, weekly keeps the weekday) — so "every 1st" / "every Friday" is just the start date |
+| `end` | date | optional; generation and projection stop there |
+| `weekdays_only` | bool | shift Sat/Sun occurrences to the following Monday — "first weekday of the month" = start on the 1st + this (v5) |
+| `active` | bool | paused templates generate nothing and are not projected |
+| `last_generated` | date | server-maintained watermark (newest generated occurrence) |
+
+Owner-only rules, index on `(user, active)`. See §7 for the generator.
+
+### `loans` (base) — not bound to a year
+| field | type | notes |
+|---|---|---|
+| `user` | relation → users | required, cascade delete |
+| `name` | text | required |
+| `principal` | number, min 0 | required |
+| `interest_rate` | number, min 0 | annual %, informational (0 = interest-free) |
+| `start` / `note` / `attachments` / `closed` | | attachments protected like on transactions; `closed` archives the loan |
+
+Owner-only rules. Payments are normal expense `transactions` with two extra fields added in v4:
+`loan` (relation → loans) and `loan_interest` (number — the interest part of the payment, which
+does **not** reduce the balance). `transactions` also gained `recurring` (relation → recurring,
+provenance of generated rows). All three relations keep the transaction when the target is
+deleted (PocketBase clears the id). Remaining balance = `principal − Σ(amount − loan_interest)`,
+computed client-side (partial index on `loan` where `loan != ''`).
+
 ### `rules` (base)
 | field | type | notes |
 |---|---|---|
@@ -94,13 +124,26 @@ API rules: owner-only (`@request.auth.id != '' && user = @request.auth.id`; crea
 - Row click → read-only **detail view** (amount, date, area, category, tags, full note, attachment grid with image previews; Edit / Delete / Close)
 - "New income" / "New expense" buttons open the form; Edit in the detail view opens the same form
 - Form: type, date, amount, area, category (datalist), note (textarea), file dropzone (multi), existing attachments with open/delete
+- New transactions can be saved as recurring right there: a "Repeats" select (weekly…yearly, plus until/weekdays-only) turns the save into a recurring template starting at the chosen date; the loan dropdown has a "+ new loan…" entry opening the loan form inline
 - Delete with confirm
 
 **Overview (`#/`)**
 - Year picker
 - Tiles: total income, total expenses, net; per area (business / rental / private) income / expenses / net
+- Projection tiles (only when something is still planned): actual + upcoming recurring occurrences of the year
+- Loans panel (only when open loans exist): repaid / interest / remaining / progress per loan + total debt — current state, deliberately separate from the yearly aggregates
 - Table: net by category
 - **Tax estimate** panel: runs the active rule against the year's aggregate and shows the returned lines (label · value). Errors in the script are shown inline, never crash the page.
+
+**Recurring (`#/recurring`)** — template list (interval, next occurrence, paused/ended state) with a
+form like the transaction form minus attachments plus interval/start/end/active. Saving backfills
+past occurrences immediately (the form warns how many); editing only affects future occurrences;
+deleting keeps generated transactions.
+
+**Loans (`#/loans`)** — list with principal / repaid / interest paid / remaining / progress bar;
+detail modal with payment history, attachments and "+ Payment" (opens the transaction form
+prefilled with the loan). The transaction form has a loan dropdown (expenses only) and an
+interest-portion input with a suggested value of ≈ remaining × rate/12.
 
 **Categories & tags (`#/labels`)** — list with usage counts, add / rename / delete.
 
@@ -132,7 +175,8 @@ Input `d`:
   area: { business: {income, expenses, net}, rental: {...}, private: {...} },
   category: { [name]: {income, expenses, net} },
   tag: { [name]: {income, expenses, net} },
-  transactions: Array<{date, type, area, category, tags, amount}>
+  transactions: Array<{date, type, area, category, tags, amount}>,
+  projected?: { income, expenses, net, area },  // still-planned recurring amounts of the year
 }
 ```
 Return value: `Array<{ label: string, value: number | string, hint?: string }>`.
@@ -180,6 +224,13 @@ their own copy without touching the app.
   no superuser exists → create it. Otherwise fall back to `./finance superuser upsert <email> <pw>`.
 - Static: `e.Router.GET("/{path...}", apis.Static(uiFS, true))` with `uiFS = fs.Sub(embed, "ui/dist")`.
 - Env: `PB_DATA=/pb_data` (data dir), default listen address `127.0.0.1:8070` (override with `--http`). Admin UI stays available at `/_/`.
+- **Recurring generator** (`recurring.go`): materializes due template occurrences as transactions —
+  daily cron `10 0 * * *` (UTC), a catch-up run on startup, and synchronously after a template is
+  created/updated (so backfill shows up right away in the UI). Occurrence *n* is always computed
+  from the template's start (`start + n·interval`, day-of-month clamped — Jan 31 → Feb 28 → Mar 31,
+  no drift); `last_generated` is the dedup watermark, advanced atomically with the created rows, so
+  user-deleted occurrences stay deleted. The same date math is mirrored in `ui/src/lib/recurring.ts`
+  for the year projection (client only projects dates > today; server only writes ≤ today).
 - Optional: nightly `pb_data` backup via PocketBase's built-in backups (config in admin UI) — no code.
 
 ## 7b. Migrations policy
@@ -231,7 +282,6 @@ ENTRYPOINT ["/finance", "serve", "--http=0.0.0.0:8070", "--dir=/pb_data"]
 Rough size: ~300 lines Go, ~800 lines Svelte/TS. One or two evenings.
 
 ## 10. Open points / later ideas (not v1)
-- Recurring transactions (rent, insurance) — quick-add template is enough for now
 - CSV export for the Steuerberater
 - Optional `vat_rate` field per transaction if USt ever becomes relevant
 - Multiple active rules (e.g. compare scenarios) — trivial extension of the Rules page

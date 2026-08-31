@@ -21,7 +21,39 @@ export interface Transaction extends RecordModel {
   tags: string[]          // tag ids
   note: string
   attachments: string[]
+  recurring: string       // id of the generating template ('' if entered by hand)
+  loan: string            // loan id ('' if not a loan payment)
+  loan_interest: number   // interest portion of a loan payment (doesn't reduce principal)
+  expand?: { category?: Category; tags?: Tag[]; loan?: Loan }
+}
+
+export type Interval = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+export const INTERVALS: Interval[] = ['weekly', 'monthly', 'quarterly', 'yearly']
+
+export interface Recurring extends RecordModel {
+  type: TxType
+  amount: number
+  area: Area
+  category: string
+  tags: string[]
+  note: string
+  interval: Interval
+  start: string
+  end: string             // '' = open-ended
+  weekdays_only: boolean  // shift Sat/Sun occurrences to the following Monday
+  active: boolean
+  last_generated: string  // server-maintained watermark ('' before first run)
   expand?: { category?: Category; tags?: Tag[] }
+}
+
+export interface Loan extends RecordModel {
+  name: string
+  principal: number
+  interest_rate: number   // annual %, 0 = interest-free
+  start: string
+  note: string
+  attachments: string[]
+  closed: boolean
 }
 
 export interface Rule extends RecordModel {
@@ -36,19 +68,31 @@ export const fileToken = () => pb.files.getToken()
 
 export interface Status { registration: boolean; version: string }
 export const status = (): Promise<Status> => pb.send('/api/murmel/status', { method: 'GET' })
-export const categoryName = (t: Transaction) => t.expand?.category?.name ?? ''
-export const tagNames = (t: Transaction) => t.expand?.tags?.map(x => x.name) ?? []
+export const categoryName = (t: { expand?: { category?: Category } }) => t.expand?.category?.name ?? ''
+export const tagNames = (t: { expand?: { tags?: Tag[] } }) => t.expand?.tags?.map(x => x.name) ?? []
 
 /** All transactions of a year (of the current user), newest first, with category/tags expanded. */
 export const loadYear = (year: number) =>
   pb.collection<Transaction>('transactions').getFullList({
     filter: pb.filter('date >= {:from} && date < {:to}', { from: `${year}-01-01 00:00:00`, to: `${year + 1}-01-01 00:00:00` }),
     sort: '-date,-created',
-    expand: 'category,tags',
+    expand: 'category,tags,loan',
   })
 
 export const loadCategories = () => pb.collection<Category>('categories').getFullList({ sort: 'name' })
 export const loadTags = () => pb.collection<Tag>('tags').getFullList({ sort: 'name' })
+
+export const loadRecurring = () =>
+  pb.collection<Recurring>('recurring').getFullList({ sort: '-active,start', expand: 'category,tags' })
+
+export const loadLoans = () => pb.collection<Loan>('loans').getFullList({ sort: 'closed,name' })
+
+/** All loan payments (optionally of one loan), across all years, newest first. */
+export const loadLoanPayments = (loanId?: string) =>
+  pb.collection<Transaction>('transactions').getFullList({
+    filter: loanId ? pb.filter('loan = {:id}', { id: loanId }) : "loan != ''",
+    sort: '-date,-created',
+  })
 
 /** Find-or-create a category/tag by name for the current user. */
 export async function ensureLabel(col: 'categories' | 'tags', name: string): Promise<RecordModel> {

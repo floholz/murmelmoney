@@ -7,6 +7,19 @@ them into a version section when tagging a release.
 
 ## [Unreleased]
 
+### Added
+- Recurring transactions: templates (interval weekly/monthly/quarterly/yearly, anchored to the
+  start date's day-of-month or weekday, optionally shifting weekend dates to the following
+  Monday for rent-style "first weekday" payments) that the server materializes into real transactions
+  daily and on startup, with backfill for past start dates. The overview shows a year-end
+  projection including the still-planned occurrences, also exposed to tax rules as `d.projected`.
+  New transactions can be saved as recurring directly from the transaction form ("Repeats").
+- Loans (`#/loans`): principal, optional interest rate, notes and attachments. Payments are
+  normal expense transactions linked to a loan with an optional interest portion; the remaining
+  balance and payment history live on the new page, and the overview shows a separate loans
+  panel (repaid / interest / remaining / total debt). Loans can also be created on the fly from
+  the transaction form's loan dropdown. Deleting a loan or template keeps its transactions.
+
 ### Changed
 - CI: bumped GitHub Actions (checkout v5, setup-node v5, setup-go v6, docker/* actions,
   action-gh-release v3) to their Node 24 releases, clearing the Node 20 deprecation warnings.

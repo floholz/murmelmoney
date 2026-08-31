@@ -73,6 +73,8 @@ button.link { border: 0; background: none; padding: 0; color: var(--link); }
 .tag.chip { color: var(--fg); background: var(--hover); font-size: .85rem; padding: .15rem .55rem; }
 .tag.chip button { color: var(--muted); margin-left: .2rem; }
 .tags-cell { display: flex; gap: .25rem; flex-wrap: wrap; }
+.progress { height: .45rem; min-width: 6rem; border-radius: 99px; background: var(--hover); border: 1px solid var(--line); overflow: hidden; }
+.progress > div { height: 100%; background: var(--income); border-radius: 99px; }
 .login .brand img { width: 2.2em; height: 2.2em; }
 .theme-toggle { padding: .3rem .5rem; line-height: 1; }
 .login-wrap { position: relative; }
