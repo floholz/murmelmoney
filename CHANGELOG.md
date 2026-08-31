@@ -7,6 +7,8 @@ them into a version section when tagging a release.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-31
+
 ### Added
 - Recurring transactions: templates (interval weekly/monthly/quarterly/yearly, anchored to the
   start date's day-of-month or weekday, optionally shifting weekend dates to the following
@@ -53,6 +55,7 @@ First release.
 - CI workflow (svelte-check, go vet, build) and release workflow publishing binaries for
   Linux/macOS/Windows plus a multi-arch Docker image on ghcr.io.
 
-[Unreleased]: https://github.com/floholz/murmelmoney/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/floholz/murmelmoney/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/floholz/murmelmoney/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/floholz/murmelmoney/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/floholz/murmelmoney/releases/tag/v1.0.0
