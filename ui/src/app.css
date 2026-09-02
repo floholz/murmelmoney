@@ -51,6 +51,8 @@ input, select, textarea, button { font: inherit; color: inherit; }
 input, select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .4rem .55rem; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 textarea { width: 100%; resize: vertical; }
+pre.snippet { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; white-space: pre-wrap; word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: .55rem .7rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85em; word-break: break-all; }
 textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; min-height: 22rem; white-space: pre; }
 label.field { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; color: var(--muted); }
 label.field > input, label.field > select { color: var(--fg); }

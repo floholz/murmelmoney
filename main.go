@@ -40,7 +40,49 @@ func registrationOpen(app core.App) (bool, error) {
 func main() {
 	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	app := pocketbase.New()
+	registerHooks(app)
 
+	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		if err := bootstrapSuperuser(app); err != nil {
+			return err
+		}
+		// Daily rollover (00:10 UTC) + catch-up for downtime at boot.
+		app.Cron().MustAdd("recurring", "10 0 * * *", func() { generateRecurring(app) })
+		go generateRecurring(app)
+		ui, err := fs.Sub(uiEmbed, "ui/dist")
+		if err != nil {
+			return err
+		}
+		// tiny public status endpoint so the login page knows whether to offer sign-up
+		e.Router.GET("/api/murmel/status", func(re *core.RequestEvent) error {
+			open, err := registrationOpen(re.App)
+			if err != nil {
+				return err
+			}
+			return re.JSON(200, map[string]any{"registration": open, "version": version})
+		})
+		registerMCP(app, e) // /api/murmel/mcp + /api/murmel/tokens
+		e.Router.GET("/{path...}", apis.Static(ui, true))
+		return e.Next()
+	})
+
+	// Same as app.Start(), but with our own default listen address.
+	app.RootCmd.AddCommand(cmd.NewSuperuserCommand(app))
+	serve := cmd.NewServeCommand(app, true)
+	if f := serve.PersistentFlags().Lookup("http"); f != nil {
+		_ = f.Value.Set(defaultAddr)
+		f.DefValue = defaultAddr
+		f.Usage = "TCP address to listen for the HTTP server"
+	}
+	app.RootCmd.AddCommand(serve)
+	if err := app.Execute(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// registerHooks wires the record hooks (registration policy, per-user default
+// rule, recurring backfill). Separate from main so tests can use them too.
+func registerHooks(app core.App) {
 	// Registration policy (MURMEL_REGISTRATION):
 	//   "true"  → always open
 	//   "false" → always closed (superusers can still create users in /_/)
@@ -95,42 +137,6 @@ func main() {
 		generateTemplate(e.App, e.Record)
 		return e.Next()
 	})
-
-	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		if err := bootstrapSuperuser(app); err != nil {
-			return err
-		}
-		// Daily rollover (00:10 UTC) + catch-up for downtime at boot.
-		app.Cron().MustAdd("recurring", "10 0 * * *", func() { generateRecurring(app) })
-		go generateRecurring(app)
-		ui, err := fs.Sub(uiEmbed, "ui/dist")
-		if err != nil {
-			return err
-		}
-		// tiny public status endpoint so the login page knows whether to offer sign-up
-		e.Router.GET("/api/murmel/status", func(re *core.RequestEvent) error {
-			open, err := registrationOpen(re.App)
-			if err != nil {
-				return err
-			}
-			return re.JSON(200, map[string]any{"registration": open, "version": version})
-		})
-		e.Router.GET("/{path...}", apis.Static(ui, true))
-		return e.Next()
-	})
-
-	// Same as app.Start(), but with our own default listen address.
-	app.RootCmd.AddCommand(cmd.NewSuperuserCommand(app))
-	serve := cmd.NewServeCommand(app, true)
-	if f := serve.PersistentFlags().Lookup("http"); f != nil {
-		_ = f.Value.Set(defaultAddr)
-		f.DefValue = defaultAddr
-		f.Usage = "TCP address to listen for the HTTP server"
-	}
-	app.RootCmd.AddCommand(serve)
-	if err := app.Execute(); err != nil {
-		log.Fatal(err)
-	}
 }
 
 // bootstrapSuperuser creates the PocketBase admin (for /_/) from

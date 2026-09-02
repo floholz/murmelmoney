@@ -7,6 +7,7 @@
   import Loans from './pages/Loans.svelte'
   import Labels from './pages/Labels.svelte'
   import Rules from './pages/Rules.svelte'
+  import Connect from './pages/Connect.svelte'
   import ThemeToggle from './lib/ThemeToggle.svelte'
   import Icon from './lib/Icon.svelte'
   import './lib/theme'
@@ -24,6 +25,7 @@
     ['/loans', 'Loans', Loans, 'loans', 'Loans'],
     ['/labels', 'Categories & tags', Labels, 'labels', 'Labels'],
     ['/rules', 'Rules', Rules, 'rules', 'Rules'],
+    ['/connect', 'AI & API', Connect, 'connect', 'Agents'],
   ] as const
   const Page = $derived(pages.find(p => p[0] === route)?.[2] ?? Overview)
 </script>

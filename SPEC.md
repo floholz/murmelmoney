@@ -240,6 +240,41 @@ an existing database in place — never edit an applied migration (PocketBase tr
 `_migrations` and would silently skip the change). Migrations run automatically on `serve`.
 `0002_multiuser.go` is the template: check-before-add, best-effort data carry-over, one-way.
 
+## 7c. MCP server (`mcp.go`)
+
+AI agents get a first-class API instead of scraping the PocketBase REST API:
+
+- **Transport**: `/api/murmel/mcp`, streamable HTTP in *stateless* mode (`Stateless: true, JSONResponse: true`
+  from `github.com/modelcontextprotocol/go-sdk/mcp`), mounted on the PocketBase router with `apis.RequireAuth("users")`.
+  One shared `mcp.Server`; the auth record is handed from the PB middleware to the tool handlers through the request
+  context (the stateless transport derives the tool context from `req.Context()`). Superusers are rejected — there is
+  no data to scope them to.
+- **Auth / "API keys"**: PocketBase static auth tokens (`record.NewStaticAuthToken(d)`, non-refreshable, custom
+  duration). `POST /api/murmel/tokens {days}` mints one for the caller (default 365, max 3650 days);
+  `POST /api/murmel/tokens/revoke` calls `RefreshTokenKey()` on the user, which invalidates every token and session.
+  No dedicated admin account, no extra collection: the token *is* the user.
+  **Read-only tokens** (`scope: "read"` in the mint body) are the same JWT plus a `scope: read` claim (PocketBase
+  ignores unknown claims, so the token authenticates normally). Enforced in two places: a router-wide middleware
+  refuses every non-GET/HEAD/OPTIONS request carrying such a token with 403 (except the MCP path), and the MCP
+  handler picks a second `mcp.Server` that registers only the read tools, appends a read-only notice with
+  "ask the user for a Read & write token on #/connect" to the instructions, and answers calls to write-tool
+  names with that notice as a tool error (receiving middleware). The write handlers check the scope as well.
+- **Tools** (all filtered by `user = auth.id`; ids of other users' records read as "not found"):
+  transactions (`list_transactions` with year / date range / type / area / category / tag / note search / loan
+  filters and `limit`+`offset` paging, `get_`, `create_`, `update_` (partial; empty string clears category/loan,
+  empty list clears tags), `delete_`), `list_categories` / `list_tags` (with usage counts), `year_summary`
+  (Go port of `aggregate()` + `projectRecurring()` from the UI — keep in sync), `get_tax_rule` (active rule script;
+  evaluated by the agent, not by the server — no JS engine in the binary), recurring (`list_`, `create_` — the create
+  hook backfills and the tool reports how many transactions it generated —, `update_`, `delete_`), loans
+  (`list_loans` with repaid / interest / remaining, `create_loan`).
+  Categories and tags are addressed by name (case-insensitive) and created on demand.
+- **UI**: `#/connect` ("AI & API") — create token (30 d / 1 y / 5 y), shown once with copy button, snippets for
+  Claude Code (`claude mcp add --transport http … --header`), generic `mcpServers` JSON and an `mcp-remote` bridge,
+  tool overview, revoke-all.
+- **Tests**: `mcp_test.go` boots a real app on a temp dir, runs the migrations, serves the real router via
+  `httptest` and drives it with the SDK client — auth required, CRUD + filters + summary math, ownership isolation,
+  recurring backfill, loan math, token mint/revoke.
+
 ## 8. Docker
 
 ```Dockerfile

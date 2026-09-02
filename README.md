@@ -58,6 +58,33 @@ Grundfreibetrag, rental profit added). Copy it, change the numbers, or write you
 never encodes tax law itself. Since it's your own code running in your own browser, there is no
 sandboxing.
 
+## AI agents (MCP)
+
+murmelmoney has a built-in [Model Context Protocol](https://modelcontextprotocol.io) server at
+`/api/murmel/mcp` (streamable HTTP, stateless), so an assistant like Claude Code, Claude Desktop or Cursor can log
+expenses, look things up, summarize a year or estimate your tax — strictly within your own account.
+
+1. Open **AI & API** in the app and create an access token (a long-lived login for your account; shown once).
+   Pick **read-only** if the agent should only look things up: it then sees just the read tools, is told at connect
+   time that it must ask you for a read & write token before it can change anything, and the token is refused on
+   every write of the regular API too.
+2. Connect a client, e.g. Claude Code:
+   ```sh
+   claude mcp add --transport http murmelmoney https://money.example.com/api/murmel/mcp \
+     --header "Authorization: Bearer <TOKEN>"
+   ```
+   Any client that supports HTTP servers with custom headers works the same way (`type: http`, `url`, `headers`);
+   clients that only run local servers can bridge it with `npx mcp-remote <url> --header "Authorization:Bearer <TOKEN>"`.
+   The page shows ready-to-paste snippets.
+
+Tools: `list/get/create/update/delete_transaction`, `list_categories`, `list_tags`, `year_summary` (the overview page
+as data, including the projected recurring amounts), `get_tax_rule` (your active script, for the agent to evaluate),
+`list/create/update/delete_recurring`, `list_loans`, `create_loan`. Categories and tags are given by name and
+created on the fly; attachments can be listed but not uploaded through the agent.
+
+Tokens are PocketBase static auth tokens signed with your account's key; **Revoke all tokens** on the same page
+rotates that key, which invalidates every token and every browser session of your account at once.
+
 ## Develop
 
 ```sh

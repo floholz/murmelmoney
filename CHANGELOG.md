@@ -7,6 +7,18 @@ them into a version section when tagging a release.
 
 ## [Unreleased]
 
+### Added
+- MCP server for AI agents at `/api/murmel/mcp` (streamable HTTP, stateless, built into the binary via the
+  official Go SDK): tools for transactions (list/get/create/update/delete with name-based categories and tags),
+  categories and tags, a year summary matching the overview page (incl. projected recurring amounts), the
+  active tax rule, recurring templates and loans. Every tool is scoped to the authenticated user.
+- Personal access tokens: `POST /api/murmel/tokens` mints a long-lived static PocketBase auth token for the
+  current user, `POST /api/murmel/tokens/revoke` rotates the user's token key (invalidating all tokens and
+  sessions). Tokens can be **read-only** (`scope: read` claim): the MCP server then advertises only the read
+  tools, tells the agent how to ask for a read & write token, and a router middleware rejects every non-GET
+  request of the REST API with such a token. New **AI & API** page (`#/connect`) to create tokens, with
+  copy-paste client config snippets.
+
 ## [1.1.0] - 2026-08-31
 
 ### Added
