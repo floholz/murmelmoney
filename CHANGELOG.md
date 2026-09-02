@@ -7,6 +7,8 @@ them into a version section when tagging a release.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-02
+
 ### Added
 - Recurring intervals: `half-yearly` preset and a general `<n> weeks|months|years` syntax
   (e.g. every 2 weeks, every 18 months) in the UI (interval picker with an "every…" mode),
@@ -88,7 +90,8 @@ First release.
 - CI workflow (svelte-check, go vet, build) and release workflow publishing binaries for
   Linux/macOS/Windows plus a multi-arch Docker image on ghcr.io.
 
-[Unreleased]: https://github.com/floholz/murmelmoney/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/floholz/murmelmoney/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/floholz/murmelmoney/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/floholz/murmelmoney/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/floholz/murmelmoney/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/floholz/murmelmoney/compare/v1.0.0...v1.0.1
