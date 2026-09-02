@@ -294,6 +294,36 @@ func TestMCPRecurringAndLoans(t *testing.T) {
 		t.Fatalf("deleting the template removed transactions: %d left", n)
 	}
 
+	// interval syntax: spellings are canonicalized, garbage is refused
+	half := call[createRecurringOutput](t, cs, "create_recurring", map[string]any{
+		"type": "expense", "amount": 300, "interval": "every 6 months", "start": start,
+	})
+	if half.Interval != "half-yearly" || half.Generated != 1 {
+		t.Fatalf("half-yearly template: %+v", half)
+	}
+	biweekly := call[recurringOut](t, cs, "update_recurring", map[string]any{"id": half.ID, "interval": "2 week"})
+	if biweekly.Interval != "2 weeks" || biweekly.Next == "" {
+		t.Fatalf("2 weeks template: %+v", biweekly)
+	}
+	callErr(t, cs, "update_recurring", map[string]any{"id": half.ID, "interval": "3 days"})
+	callErr(t, cs, "create_recurring", map[string]any{"type": "expense", "amount": 1, "interval": "daily"})
+	// the REST path is guarded by the same hook
+	col, _ := env.app.FindCollectionByNameOrId("recurring")
+	bad := core.NewRecord(col)
+	bad.Set("user", u.Id)
+	bad.Set("type", "expense")
+	bad.Set("amount", 1)
+	bad.Set("area", "private")
+	bad.Set("interval", "fortnightly")
+	bad.Set("start", start)
+	if err := env.app.Save(bad); err == nil {
+		t.Fatal("record hook accepted an invalid interval")
+	}
+	bad.Set("interval", "Every 12 Months")
+	if err := env.app.Save(bad); err != nil || bad.GetString("interval") != "yearly" {
+		t.Fatalf("record hook did not canonicalize: %v %q", err, bad.GetString("interval"))
+	}
+
 	loan := call[loanOut](t, cs, "create_loan", map[string]any{"name": "Car", "principal": 10000, "interest_rate": 4, "start": "2025-01-01"})
 	call[txOut](t, cs, "create_transaction", map[string]any{"type": "expense", "amount": 500, "loan_id": loan.ID, "loan_interest": 30})
 	call[txOut](t, cs, "create_transaction", map[string]any{"type": "expense", "amount": 500, "loan_id": loan.ID, "loan_interest": 28})

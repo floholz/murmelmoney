@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { pb, uid, AREAS, INTERVALS, fileUrl, fileToken, ensureLabel, categoryName, tagNames, loadLoans, loadLoanPayments, type Transaction, type TxType, type Area, type Interval, type Category, type Tag, type Loan, type Recurring } from '../lib/pb'
+  import { pb, uid, AREAS, fileUrl, fileToken, ensureLabel, categoryName, tagNames, loadLoans, loadLoanPayments, type Transaction, type TxType, type Area, type Interval, type Category, type Tag, type Loan, type Recurring } from '../lib/pb'
   import { today, isoDate, money } from '../lib/format'
   import { pendingCount } from '../lib/recurring'
   import TagPicker from '../lib/TagPicker.svelte'
   import LoanForm from './LoanForm.svelte'
+  import IntervalPicker from '../lib/IntervalPicker.svelte'
 
   let { tx = null, defaultType = 'expense', defaultLoan = '', categories = [], tags = [], onclose }: {
     tx?: Transaction | null
@@ -120,9 +121,7 @@
       <label class="field">Category <input list="cats" bind:value={category} placeholder="e.g. Honorarnote" /></label>
       <datalist id="cats">{#each categories as c}<option value={c.name}></option>{/each}</datalist>
       {#if !tx}
-        <label class="field">Repeats
-          <select bind:value={repeat}><option value="">never (one-off)</option>{#each INTERVALS as i}<option value={i}>{i}</option>{/each}</select>
-        </label>
+        <label class="field">Repeats <IntervalPicker bind:value={repeat} none="never (one-off)" /></label>
         {#if repeat}
           <label class="field">Until (optional) <input type="date" bind:value={repeatEnd} /></label>
         {/if}

@@ -27,8 +27,8 @@ export interface Transaction extends RecordModel {
   expand?: { category?: Category; tags?: Tag[]; loan?: Loan }
 }
 
-export type Interval = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
-export const INTERVALS: Interval[] = ['weekly', 'monthly', 'quarterly', 'yearly']
+/** Interval syntax: a preset name or "<n> weeks|months|years" — see lib/recurring.ts. */
+export type Interval = string
 
 export interface Recurring extends RecordModel {
   type: TxType

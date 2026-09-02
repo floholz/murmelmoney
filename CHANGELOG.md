@@ -7,6 +7,15 @@ them into a version section when tagging a release.
 
 ## [Unreleased]
 
+### Added
+- Recurring intervals: `half-yearly` preset and a general `<n> weeks|months|years` syntax
+  (e.g. every 2 weeks, every 18 months) in the UI (interval picker with an "every…" mode),
+  the REST API and the MCP tools. Equivalent spellings are stored canonically
+  (`6 months` → `half-yearly`, `12 months` → `yearly`); invalid intervals are rejected.
+
+### Changed
+- Migration v6 turns `recurring.interval` from a select into a text field, keeping existing values.
+
 ## [1.2.0] - 2026-09-02
 
 ### Added

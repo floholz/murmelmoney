@@ -1,7 +1,7 @@
 <script lang="ts">
   import { loadRecurring, loadCategories, loadTags, categoryName, tagNames, type Recurring, type TxType, type Category, type Tag } from '../lib/pb'
   import { signed, isoDate } from '../lib/format'
-  import { nextOccurrence } from '../lib/recurring'
+  import { nextOccurrence, intervalLabel } from '../lib/recurring'
   import RecurringForm from './RecurringForm.svelte'
 
   let templates = $state<Recurring[]>([])
@@ -42,7 +42,7 @@
     <tbody>
       {#each templates as t (t.id)}
         <tr class="clickable" onclick={() => open(t)} style={t.active ? '' : 'opacity:.55'}>
-          <td class="date">{t.interval} since {isoDate(t.start)}{#if t.weekdays_only}<span class="tag" title="Sat/Sun shift to Monday">weekdays</span>{/if}
+          <td class="date">{intervalLabel(t.interval)} since {isoDate(t.start)}{#if t.weekdays_only}<span class="tag" title="Sat/Sun shift to Monday">weekdays</span>{/if}
             {#if !t.active}<span class="tag">paused</span>{:else if ended(t)}<span class="tag">ended {isoDate(t.end)}</span>{:else if t.end}<span class="muted small">until {isoDate(t.end)}</span>{/if}</td>
           <td class="area"><span class="tag">{t.area}</span></td>
           <td class="category">{categoryName(t)}</td>

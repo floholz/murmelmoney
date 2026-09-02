@@ -79,8 +79,8 @@ API rules: owner-only (`@request.auth.id != '' && user = @request.auth.id`; crea
 |---|---|---|
 | `user` | relation → users | required, cascade delete |
 | `type` / `amount` / `area` / `category` / `tags` / `note` | | same shapes as on `transactions`; copied into each generated transaction |
-| `interval` | select `weekly` \| `monthly` \| `quarterly` \| `yearly` | required |
-| `start` | date | required; occurrence *n* is always `start + n·interval` (day-of-month clamped to shorter months, weekly keeps the weekday) — so "every 1st" / "every Friday" is just the start date |
+| `interval` | text (v6; select `weekly`…`yearly` before) | required; a preset `weekly` \| `monthly` \| `quarterly` \| `half-yearly` \| `yearly` or `<n> weeks` \| `<n> months` \| `<n> years` (n = 1…999, e.g. `2 weeks`, `18 months`). A record hook validates the syntax and stores the canonical form (`6 months` → `half-yearly`, `every 12 months` → `yearly`); a week is the smallest step so `weekdays_only` never reorders occurrences |
+| `start` | date | required; occurrence *n* is always `start + n·interval` (day-of-month clamped to shorter months, week-based intervals keep the weekday) — so "every 1st" / "every Friday" is just the start date |
 | `end` | date | optional; generation and projection stop there |
 | `weekdays_only` | bool | shift Sat/Sun occurrences to the following Monday — "first weekday of the month" = start on the 1st + this (v5) |
 | `active` | bool | paused templates generate nothing and are not projected |
@@ -124,7 +124,7 @@ computed client-side (partial index on `loan` where `loan != ''`).
 - Row click → read-only **detail view** (amount, date, area, category, tags, full note, attachment grid with image previews; Edit / Delete / Close)
 - "New income" / "New expense" buttons open the form; Edit in the detail view opens the same form
 - Form: type, date, amount, area, category (datalist), note (textarea), file dropzone (multi), existing attachments with open/delete
-- New transactions can be saved as recurring right there: a "Repeats" select (weekly…yearly, plus until/weekdays-only) turns the save into a recurring template starting at the chosen date; the loan dropdown has a "+ new loan…" entry opening the loan form inline
+- New transactions can be saved as recurring right there: a "Repeats" select (the interval presets or "every… N weeks/months/years", plus until/weekdays-only) turns the save into a recurring template starting at the chosen date; the loan dropdown has a "+ new loan…" entry opening the loan form inline
 - Delete with confirm
 
 **Overview (`#/`)**
@@ -136,7 +136,9 @@ computed client-side (partial index on `loan` where `loan != ''`).
 - **Tax estimate** panel: runs the active rule against the year's aggregate and shows the returned lines (label · value). Errors in the script are shown inline, never crash the page.
 
 **Recurring (`#/recurring`)** — template list (interval, next occurrence, paused/ended state) with a
-form like the transaction form minus attachments plus interval/start/end/active. Saving backfills
+form like the transaction form minus attachments plus interval/start/end/active. The interval picker
+(`lib/IntervalPicker.svelte`, shared with the transaction form) offers the presets and a custom
+"every N weeks/months/years" mode; `lib/recurring.ts` holds the parser/canonicalizer mirrored from `recurring.go`. Saving backfills
 past occurrences immediately (the form warns how many); editing only affects future occurrences;
 deleting keeps generated transactions.
 
@@ -228,7 +230,8 @@ their own copy without touching the app.
   daily cron `10 0 * * *` (UTC), a catch-up run on startup, and synchronously after a template is
   created/updated (so backfill shows up right away in the UI). Occurrence *n* is always computed
   from the template's start (`start + n·interval`, day-of-month clamped — Jan 31 → Feb 28 → Mar 31,
-  no drift); `last_generated` is the dedup watermark, advanced atomically with the created rows, so
+  no drift; the interval syntax is parsed by `parseInterval` there, and an `OnRecordValidate` hook in
+  `main.go` rejects anything else and canonicalizes the spelling); `last_generated` is the dedup watermark, advanced atomically with the created rows, so
   user-deleted occurrences stay deleted. The same date math is mirrored in `ui/src/lib/recurring.ts`
   for the year projection (client only projects dates > today; server only writes ≤ today).
 - Optional: nightly `pb_data` backup via PocketBase's built-in backups (config in admin UI) — no code.

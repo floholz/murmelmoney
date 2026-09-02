@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { pb, uid, AREAS, INTERVALS, ensureLabel, categoryName, tagNames, type Recurring, type TxType, type Area, type Interval, type Category, type Tag } from '../lib/pb'
+  import { pb, uid, AREAS, ensureLabel, categoryName, tagNames, type Recurring, type TxType, type Area, type Interval, type Category, type Tag } from '../lib/pb'
   import { today, isoDate } from '../lib/format'
   import { pendingCount } from '../lib/recurring'
   import TagPicker from '../lib/TagPicker.svelte'
+  import IntervalPicker from '../lib/IntervalPicker.svelte'
 
   let { rec = null, defaultType = 'expense', categories = [], tags = [], onclose }: {
     rec?: Recurring | null
@@ -64,9 +65,7 @@
 
     <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))">
       <label class="field">Amount (€) <input type="number" step="0.01" min="0" bind:value={amount} required /></label>
-      <label class="field">Interval
-        <select bind:value={interval}>{#each INTERVALS as i}<option value={i}>{i}</option>{/each}</select>
-      </label>
+      <label class="field">Interval <IntervalPicker bind:value={interval} /></label>
       <label class="field">Area
         <select bind:value={area}>{#each AREAS as a}<option value={a}>{a}</option>{/each}</select>
       </label>
@@ -77,8 +76,8 @@
     </div>
     <label class="row small" style="margin-top:.6rem"><input type="checkbox" bind:checked={weekdaysOnly} />
       only on weekdays — a date falling on Sat/Sun shifts to the following Monday (e.g. rent on the first weekday of the month: first date on the 1st + this)</label>
-    <p class="muted small" style="margin:.5rem 0 0">Repeats from the first date: monthly/quarterly/yearly keep its
-      day of the month (clamped to shorter months), weekly keeps its weekday.
+    <p class="muted small" style="margin:.5rem 0 0">Repeats from the first date: month- and year-based intervals keep its
+      day of the month (clamped to shorter months), week-based ones keep its weekday.
       {#if rec?.last_generated}Moving the first date further back does not create occurrences before {isoDate(rec.last_generated)}.{/if}</p>
 
     <div class="field" style="margin-top:.8rem"><span class="small muted">Tags</span><TagPicker bind:selected={tagList} options={tags} /></div>

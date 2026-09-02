@@ -57,7 +57,7 @@ A transaction has at most one category (what kind: Software, Honorarnote, Repair
 (what it belongs to: a client, a project, a cost point, the house, ...). Prefer names that already exist
 (list_categories / list_tags) over inventing new ones; names are matched case-insensitively.
 Dates are YYYY-MM-DD. Recurring templates materialize real transactions automatically (list_recurring shows the
-next occurrence); loan payments are expense transactions linked to a loan via loan_id, with an optional interest part.
+next occurrence); their interval is weekly/monthly/quarterly/half-yearly/yearly or "<n> weeks|months|years"; loan payments are expense transactions linked to a loan via loan_id, with an optional interest part.
 year_summary aggregates a year like the app's overview page; get_tax_rule returns the user's own tax-estimate
 script (a JavaScript function body over that summary) if they ask what to set aside for tax.`
 
@@ -971,6 +971,15 @@ func (m *mcpTools) getTaxRule(ctx context.Context, _ *mcp.CallToolRequest, _ emp
 
 // --- recurring ---------------------------------------------------------------
 
+// validInterval returns the canonical form of an interval or a tool error.
+func validInterval(s string) (string, error) {
+	canon, ok := canonicalInterval(s)
+	if !ok {
+		return "", fmt.Errorf("interval must be weekly, monthly, quarterly, half-yearly, yearly or '<n> weeks|months|years', got %q", s)
+	}
+	return canon, nil
+}
+
 type recurringOut struct {
 	ID            string   `json:"id"`
 	Type          string   `json:"type"`
@@ -979,7 +988,7 @@ type recurringOut struct {
 	Category      string   `json:"category,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
 	Note          string   `json:"note,omitempty"`
-	Interval      string   `json:"interval" jsonschema:"weekly, monthly, quarterly or yearly"`
+	Interval      string   `json:"interval" jsonschema:"weekly, monthly, quarterly, half-yearly, yearly, or '<n> weeks|months|years' (e.g. '2 weeks', '18 months')"`
 	Start         string   `json:"start"`
 	End           string   `json:"end,omitempty"`
 	WeekdaysOnly  bool     `json:"weekdays_only" jsonschema:"Saturday/Sunday occurrences move to the following Monday"`
@@ -1009,7 +1018,13 @@ func recurringToOut(r *core.Record, cats, tags map[string]string) recurringOut {
 		}
 	}
 	if o.Active {
-		if next := occurrences(r, today(), today().AddDate(2, 0, 0)); len(next) > 0 {
+		// The next occurrence lies within one step after max(today, start)
+		// (+ at most 2 days of weekday shift); two steps is a safe horizon.
+		base := today()
+		if start := r.GetDateTime("start").Time().UTC(); start.After(base) {
+			base = start
+		}
+		if next := occurrences(r, today(), nthOccurrence(base, o.Interval, 2)); len(next) > 0 {
 			o.Next = next[0].Format(dateLayout)
 		}
 	}
@@ -1055,7 +1070,7 @@ func (m *mcpTools) catsAndTags(uid string) (map[string]string, map[string]string
 type createRecurringInput struct {
 	Type         string   `json:"type" jsonschema:"income or expense"`
 	Amount       float64  `json:"amount" jsonschema:"amount per occurrence in EUR"`
-	Interval     string   `json:"interval" jsonschema:"weekly, monthly, quarterly or yearly"`
+	Interval     string   `json:"interval" jsonschema:"weekly, monthly, quarterly, half-yearly, yearly, or '<n> weeks|months|years' (e.g. '2 weeks', '18 months')"`
 	Start        string   `json:"start,omitempty" jsonschema:"first occurrence, YYYY-MM-DD, defaults to today; 'every 1st' = a start on the 1st"`
 	End          string   `json:"end,omitempty" jsonschema:"last possible date, YYYY-MM-DD; empty = open-ended"`
 	Area         string   `json:"area,omitempty" jsonschema:"business (default), rental or private"`
@@ -1079,7 +1094,8 @@ func (m *mcpTools) createRecurring(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := oneOf("type", in.Type, "income", "expense"); err != nil {
 		return nil, out, err
 	}
-	if err := oneOf("interval", in.Interval, "weekly", "monthly", "quarterly", "yearly"); err != nil {
+	interval, err := validInterval(in.Interval)
+	if err != nil {
 		return nil, out, err
 	}
 	if in.Area == "" {
@@ -1125,7 +1141,7 @@ func (m *mcpTools) createRecurring(ctx context.Context, _ *mcp.CallToolRequest, 
 	r.Set("category", cat)
 	r.Set("tags", tagIds)
 	r.Set("note", in.Note)
-	r.Set("interval", in.Interval)
+	r.Set("interval", interval)
 	r.Set("start", start)
 	r.Set("end", end)
 	r.Set("weekdays_only", in.WeekdaysOnly)
@@ -1151,7 +1167,7 @@ type updateRecurringInput struct {
 	ID           string   `json:"id"`
 	Type         *string  `json:"type,omitempty" jsonschema:"income or expense"`
 	Amount       *float64 `json:"amount,omitempty"`
-	Interval     *string  `json:"interval,omitempty" jsonschema:"weekly, monthly, quarterly or yearly"`
+	Interval     *string  `json:"interval,omitempty" jsonschema:"weekly, monthly, quarterly, half-yearly, yearly, or '<n> weeks|months|years' (e.g. '2 weeks', '18 months')"`
 	Start        *string  `json:"start,omitempty" jsonschema:"YYYY-MM-DD"`
 	End          *string  `json:"end,omitempty" jsonschema:"YYYY-MM-DD; empty string makes it open-ended"`
 	Area         *string  `json:"area,omitempty" jsonschema:"business, rental or private"`
@@ -1181,10 +1197,11 @@ func (m *mcpTools) updateRecurring(ctx context.Context, _ *mcp.CallToolRequest, 
 		r.Set("amount", *in.Amount)
 	}
 	if in.Interval != nil {
-		if err := oneOf("interval", *in.Interval, "weekly", "monthly", "quarterly", "yearly"); err != nil {
+		interval, err := validInterval(*in.Interval)
+		if err != nil {
 			return nil, recurringOut{}, err
 		}
-		r.Set("interval", *in.Interval)
+		r.Set("interval", interval)
 	}
 	if in.Start != nil {
 		d, err := parseDate(*in.Start)

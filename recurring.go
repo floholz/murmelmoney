@@ -10,6 +10,9 @@ package main
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,18 +26,75 @@ import (
 // corrupted start date flooding the database.
 const maxPerRun = 5000
 
-func nthOccurrence(start time.Time, interval string, n int) time.Time {
-	switch interval {
-	case "weekly":
-		return start.AddDate(0, 0, 7*n)
-	case "monthly":
-		return addMonthsClamped(start, n)
-	case "quarterly":
-		return addMonthsClamped(start, 3*n)
-	case "yearly":
-		return addMonthsClamped(start, 12*n)
+// Interval syntax (the `interval` field of a template):
+//
+//	weekly | monthly | quarterly | half-yearly | yearly   named presets
+//	<n> week(s) | <n> month(s) | <n> year(s)             e.g. "2 weeks", "18 months"
+//
+// An optional "every " prefix is accepted on input. canonicalInterval reduces
+// equivalent spellings to one stored form ("1 month" → "monthly", "6 months"
+// → "half-yearly", "12 months" → "yearly"), so what is stored is always the
+// shortest form. The smallest interval is a week on purpose: weekdays_only
+// shifts dates by up to 2 days and relies on occurrences staying ordered.
+var intervalRe = regexp.MustCompile(`^(?:every )?([1-9][0-9]{0,2}) (week|month|year)s?$`)
+
+var intervalPresets = map[string]struct {
+	count int
+	unit  string
+}{
+	"weekly": {1, "week"}, "monthly": {1, "month"}, "quarterly": {3, "month"},
+	"half-yearly": {6, "month"}, "yearly": {1, "year"},
+}
+
+// parseInterval returns the step of an interval as (count, unit) with unit
+// being "week", "month" or "year"; ok is false for anything else.
+func parseInterval(s string) (count int, unit string, ok bool) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if p, isPreset := intervalPresets[strings.TrimPrefix(s, "every ")]; isPreset {
+		return p.count, p.unit, true
 	}
-	return start
+	m := intervalRe.FindStringSubmatch(s)
+	if m == nil {
+		return 0, "", false
+	}
+	count, _ = strconv.Atoi(m[1])
+	return count, m[2], true
+}
+
+// canonicalInterval normalizes a valid interval to its stored form; ok is
+// false when it doesn't parse.
+func canonicalInterval(s string) (string, bool) {
+	count, unit, ok := parseInterval(s)
+	if !ok {
+		return "", false
+	}
+	if unit == "month" && count%12 == 0 {
+		count, unit = count/12, "year"
+	}
+	for name, p := range intervalPresets {
+		if p.count == count && p.unit == unit {
+			return name, true
+		}
+	}
+	if count == 1 {
+		return "1 " + unit, true
+	}
+	return strconv.Itoa(count) + " " + unit + "s", true
+}
+
+func nthOccurrence(start time.Time, interval string, n int) time.Time {
+	count, unit, ok := parseInterval(interval)
+	if !ok {
+		return start
+	}
+	switch unit {
+	case "week":
+		return start.AddDate(0, 0, 7*count*n)
+	case "month":
+		return addMonthsClamped(start, count*n)
+	default: // year
+		return addMonthsClamped(start, 12*count*n)
+	}
 }
 
 // shiftToWeekday moves Saturday/Sunday dates forward to the following Monday
@@ -111,6 +171,9 @@ func generateForTemplate(app core.App, rec *core.Record) (int, error) {
 		return 0, fmt.Errorf("template has no start date")
 	}
 	interval := rec.GetString("interval")
+	if _, _, ok := parseInterval(interval); !ok {
+		return 0, fmt.Errorf("invalid interval %q", interval)
+	}
 	today := time.Now().UTC().Truncate(24 * time.Hour)
 	limit := today
 	if end := rec.GetDateTime("end").Time().UTC(); !end.IsZero() && end.Before(limit) {

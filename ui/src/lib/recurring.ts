@@ -9,16 +9,48 @@
 //   monthly  2025-01-31 n=1 → 2025-02-28, n=2 → 2025-03-31, n=3 → 2025-04-30
 //   monthly  2024-01-31 n=1 → 2024-02-29 (leap)
 //   quarterly 2024-11-30 n=1 → 2025-02-28
+//   half-yearly 2024-08-31 n=1 → 2025-02-28
 //   yearly   2024-02-29 n=1 → 2025-02-28, n=4 → 2028-02-29
 //   weekly   2025-01-03 n=1 → 2025-01-10 (Friday stays Friday)
+//   2 weeks  2025-01-03 n=3 → 2025-02-14;  2 years 2024-02-29 n=1 → 2026-02-28
 import { AREAS, type Area, type Interval, type Recurring } from './pb'
 
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10)
 
+// --- interval syntax ----------------------------------------------------------
+// A preset name or "<n> week(s)|month(s)|year(s)" (the server also accepts an
+// "every " prefix and stores everything in canonical form — see recurring.go).
+export type IntervalUnit = 'week' | 'month' | 'year'
+export const INTERVAL_UNITS: IntervalUnit[] = ['week', 'month', 'year']
+export const INTERVAL_PRESETS: Record<string, { count: number; unit: IntervalUnit }> = {
+  weekly: { count: 1, unit: 'week' }, monthly: { count: 1, unit: 'month' }, quarterly: { count: 3, unit: 'month' },
+  'half-yearly': { count: 6, unit: 'month' }, yearly: { count: 1, unit: 'year' },
+}
+
+export function parseInterval(s: Interval): { count: number; unit: IntervalUnit } | null {
+  s = s.trim().toLowerCase().replace(/^every /, '')
+  if (INTERVAL_PRESETS[s]) return INTERVAL_PRESETS[s]
+  const m = /^([1-9][0-9]{0,2}) (week|month|year)s?$/.exec(s)
+  return m ? { count: Number(m[1]), unit: m[2] as IntervalUnit } : null
+}
+
+/** Shortest spelling of an interval ("1 month" → "monthly", "12 months" → "yearly", "2 week" → "2 weeks"). */
+export function canonicalInterval(count: number, unit: IntervalUnit): Interval {
+  if (unit === 'month' && count % 12 === 0) { count /= 12; unit = 'year' }
+  for (const [name, p] of Object.entries(INTERVAL_PRESETS)) if (p.count === count && p.unit === unit) return name
+  return `${count} ${unit}${count === 1 ? '' : 's'}`
+}
+
+/** Human label: presets as-is, everything else "every 2 weeks". */
+export const intervalLabel = (s: Interval) =>
+  INTERVAL_PRESETS[s] ? s : parseInterval(s) ? 'every ' + canonicalInterval(parseInterval(s)!.count, parseInterval(s)!.unit) : s
+
 export function nthDate(start: string, interval: Interval, n: number): string {
   const s = new Date(start.slice(0, 10) + 'T00:00:00Z')
-  if (interval === 'weekly') return iso(s.getTime() + n * 7 * 86400_000)
-  const months = { monthly: 1, quarterly: 3, yearly: 12 }[interval] * n
+  const p = parseInterval(interval)
+  if (!p) return start.slice(0, 10)
+  if (p.unit === 'week') return iso(s.getTime() + n * p.count * 7 * 86400_000)
+  const months = (p.unit === 'year' ? 12 : 1) * p.count * n
   const y = s.getUTCFullYear(), m = s.getUTCMonth() + months
   const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate() // day 0 of next month = last of target
   return iso(Date.UTC(y, m, Math.min(s.getUTCDate(), last)))
@@ -38,6 +70,7 @@ export function occurrences(t: Recurring, afterExcl: string, toIncl: string): st
   const end = t.end ? t.end.slice(0, 10) : ''
   const limit = end && end < toIncl ? end : toIncl
   const out: string[] = []
+  if (!parseInterval(t.interval)) return out
   for (let n = 0; ; n++) {
     let d = nthDate(start, t.interval, n)
     if (t.weekdays_only) d = shiftToWeekday(d)
@@ -86,6 +119,9 @@ export function projectRecurring(templates: Recurring[], year: number, today = t
 /** Next occurrence after today ('' if the template is done or paused). */
 export function nextOccurrence(t: Recurring, today = todayIso()): string {
   if (!t.active) return ''
-  const horizon = nthDate(today, 'yearly', 2) // look ahead 2 years max
+  // The next occurrence lies within one step after max(today, start) (+ at
+  // most 2 days of weekday shift); two steps is a safe horizon.
+  const start = t.start.slice(0, 10)
+  const horizon = nthDate(start > today ? start : today, t.interval, 2)
   return occurrences(t, today, horizon)[0] ?? ''
 }

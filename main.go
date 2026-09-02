@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/ozzo-validation/v4"
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/cmd"
@@ -124,6 +125,19 @@ func registerHooks(app core.App) {
 		if err := e.App.Save(r); err != nil {
 			e.App.Logger().Error("could not create default rule", "err", err)
 		}
+		return e.Next()
+	})
+
+	// The interval is free text in the database (v6); the syntax lives in
+	// recurring.go. Normalize it before validation so equivalent spellings
+	// ("6 months", "every 6 months", "half-yearly") are stored the same way.
+	app.OnRecordValidate("recurring").BindFunc(func(e *core.RecordEvent) error {
+		canon, ok := canonicalInterval(e.Record.GetString("interval"))
+		if !ok {
+			return validation.Errors{"interval": validation.NewError("validation_invalid_interval",
+				"Must be weekly, monthly, quarterly, half-yearly, yearly or \"<n> weeks|months|years\".")}
+		}
+		e.Record.Set("interval", canon)
 		return e.Next()
 	})
 
