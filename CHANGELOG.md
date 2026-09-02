@@ -13,6 +13,16 @@ them into a version section when tagging a release.
   the REST API and the MCP tools. Equivalent spellings are stored canonically
   (`6 months` → `half-yearly`, `12 months` → `yearly`); invalid intervals are rejected.
 
+- MCP: `update_loan` (name, principal, rate, start, note, closed) and `delete_loan` (payments are kept).
+- MCP: `create_transactions` batch import (max 200, all-or-nothing) with `skip_duplicates` that skips and
+  reports items already present with the same date, type, amount and area; `amount` filter on
+  `list_transactions` for duplicate lookups.
+- MCP: `add_tags` / `remove_tags` on `update_transaction` and a bulk `tag_transactions` tool.
+- MCP: `rename_label` (renaming onto an existing name merges categories/tags across transactions and
+  templates) and `delete_label`.
+- MCP: `"none"` clears optional fields in update tools (`category`, `loan_id`, `end`, `start`,
+  `tags: ["none"]`) for clients that drop empty strings from tool arguments.
+
 ### Changed
 - Migration v6 turns `recurring.interval` from a select into a text field, keeping existing values.
 

@@ -77,9 +77,11 @@ expenses, look things up, summarize a year or estimate your tax — strictly wit
    clients that only run local servers can bridge it with `npx mcp-remote <url> --header "Authorization:Bearer <TOKEN>"`.
    The page shows ready-to-paste snippets.
 
-Tools: `list/get/create/update/delete_transaction`, `list_categories`, `list_tags`, `year_summary` (the overview page
-as data, including the projected recurring amounts), `get_tax_rule` (your active script, for the agent to evaluate),
-`list/create/update/delete_recurring`, `list_loans`, `create_loan`. Categories and tags are given by name and
+Tools: `list/get/create/update/delete_transaction`, `create_transactions` (batch import, all-or-nothing, optional
+duplicate skipping), `tag_transactions` (add/remove tags on many rows), `list_categories`, `list_tags`,
+`rename_label` (renaming onto an existing name merges), `delete_label`, `year_summary` (the overview page as data,
+including the projected recurring amounts), `get_tax_rule` (your active script, for the agent to evaluate),
+`list/create/update/delete_recurring`, `list/create/update/delete_loan`. Categories and tags are given by name and
 created on the fly; attachments can be listed but not uploaded through the agent.
 
 Tokens are PocketBase static auth tokens signed with your account's key; **Revoke all tokens** on the same page

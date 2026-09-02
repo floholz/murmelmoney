@@ -59,7 +59,10 @@ A transaction has at most one category (what kind: Software, Honorarnote, Repair
 Dates are YYYY-MM-DD. Recurring templates materialize real transactions automatically (list_recurring shows the
 next occurrence); their interval is weekly/monthly/quarterly/half-yearly/yearly or "<n> weeks|months|years"; loan payments are expense transactions linked to a loan via loan_id, with an optional interest part.
 year_summary aggregates a year like the app's overview page; get_tax_rule returns the user's own tax-estimate
-script (a JavaScript function body over that summary) if they ask what to set aside for tax.`
+script (a JavaScript function body over that summary) if they ask what to set aside for tax.
+For imports use create_transactions (a list, all-or-nothing, optional skip_duplicates) and tag_transactions
+(add/remove tags on many rows at once). In update tools, "none" clears an optional field (same as an empty
+string, which some clients drop): category, loan_id, end, start; tags: ["none"] clears the tags.`
 
 // registerMCP mounts the MCP endpoint and the personal-access-token endpoints.
 func registerMCP(app core.App, e *core.ServeEvent) {
@@ -195,9 +198,10 @@ func tokenScope(r *http.Request) string {
 // writeTools are the tool names that modify data; the read-only server does
 // not advertise them and answers calls to them with readOnlyMsg.
 var writeTools = map[string]bool{
-	"create_transaction": true, "update_transaction": true, "delete_transaction": true,
+	"create_transaction": true, "create_transactions": true, "update_transaction": true, "delete_transaction": true,
+	"tag_transactions": true, "rename_label": true, "delete_label": true,
 	"create_recurring": true, "update_recurring": true, "delete_recurring": true,
-	"create_loan": true,
+	"create_loan": true, "update_loan": true, "delete_loan": true,
 }
 
 // newMCPServer builds the tool set. The read-only variant registers only the
@@ -228,7 +232,7 @@ func newMCPServer(app core.App, readOnly bool, cache *mcp.SchemaCache) *mcp.Serv
 	del := &mcp.ToolAnnotations{DestructiveHint: ptr(true)}
 
 	mcp.AddTool(s, &mcp.Tool{Name: "list_transactions", Annotations: ro,
-		Description: "List the user's transactions, newest first. Filter by year or a date range, type, area, category, tag, note text or loan."}, t.listTransactions)
+		Description: "List the user's transactions, newest first. Filter by year or a date range, type, area, category, tag, note text, exact amount or loan (date range + amount finds possible duplicates before an import)."}, t.listTransactions)
 	mcp.AddTool(s, &mcp.Tool{Name: "get_transaction", Annotations: ro,
 		Description: "Fetch one transaction by id, including the full note and attachment file names."}, t.getTransaction)
 	mcp.AddTool(s, &mcp.Tool{Name: "list_categories", Annotations: ro,
@@ -249,10 +253,18 @@ func newMCPServer(app core.App, readOnly bool, cache *mcp.SchemaCache) *mcp.Serv
 
 	mcp.AddTool(s, &mcp.Tool{Name: "create_transaction", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false)},
 		Description: "Record an income or expense. Category and tags are given by name and created when they do not exist yet."}, t.createTransaction)
+	mcp.AddTool(s, &mcp.Tool{Name: "create_transactions", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false)},
+		Description: "Record many transactions in one call (max 200), all-or-nothing: if one item is invalid nothing is created. With skip_duplicates, items that already exist (same date, type, amount and area) are skipped and reported, so an import can be re-run safely."}, t.createTransactions)
 	mcp.AddTool(s, &mcp.Tool{Name: "update_transaction", Annotations: rw,
-		Description: "Change fields of an existing transaction. Only the given fields change; pass an empty string to clear category or loan and an empty list to clear tags."}, t.updateTransaction)
+		Description: "Change fields of an existing transaction. Only the given fields change. 'none' (or an empty string) clears category or loan_id; tags replaces all tags (['none'] clears them) while add_tags/remove_tags change them incrementally."}, t.updateTransaction)
+	mcp.AddTool(s, &mcp.Tool{Name: "tag_transactions", Annotations: rw,
+		Description: "Add and/or remove tags on many transactions at once (max 500 ids) without touching their other tags."}, t.tagTransactions)
 	mcp.AddTool(s, &mcp.Tool{Name: "delete_transaction", Annotations: del,
 		Description: "Delete a transaction (and its attachments) permanently."}, t.deleteTransaction)
+	mcp.AddTool(s, &mcp.Tool{Name: "rename_label", Annotations: rw,
+		Description: "Rename a category or tag. Renaming onto a name that already exists merges the two: every transaction and recurring template is moved to the existing one."}, t.renameLabel)
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_label", Annotations: del,
+		Description: "Delete a category or tag. Transactions and templates that used it keep existing without it."}, t.deleteLabel)
 	mcp.AddTool(s, &mcp.Tool{Name: "create_recurring", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false)},
 		Description: "Create a recurring template. Occurrences are start + n*interval (day-of-month clamped, weekly keeps the weekday); past occurrences up to today are generated immediately as real transactions."}, t.createRecurring)
 	mcp.AddTool(s, &mcp.Tool{Name: "update_recurring", Annotations: rw,
@@ -261,6 +273,10 @@ func newMCPServer(app core.App, readOnly bool, cache *mcp.SchemaCache) *mcp.Serv
 		Description: "Delete a recurring template. Transactions it already generated are kept."}, t.deleteRecurring)
 	mcp.AddTool(s, &mcp.Tool{Name: "create_loan", Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(false)},
 		Description: "Create a loan. Payments are then recorded as expense transactions with loan_id (and an optional loan_interest part)."}, t.createLoan)
+	mcp.AddTool(s, &mcp.Tool{Name: "update_loan", Annotations: rw,
+		Description: "Change a loan: name, principal, interest rate, start date, note, or close/reopen it with closed. Only the given fields change."}, t.updateLoan)
+	mcp.AddTool(s, &mcp.Tool{Name: "delete_loan", Annotations: del,
+		Description: "Delete a loan. Its payment transactions are kept, just no longer linked to a loan."}, t.deleteLoan)
 	return s
 }
 
@@ -301,6 +317,16 @@ func dateOut(dt types.DateTime) string {
 }
 
 func today() time.Time { return time.Now().UTC().Truncate(24 * time.Hour) }
+
+// cleared reports whether an optional string in an update means "unset".
+// Some MCP clients drop empty strings from arguments, so "none" works too.
+func cleared(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "none", "null":
+		return true
+	}
+	return false
+}
 
 func oneOf(field, v string, allowed ...string) error {
 	for _, a := range allowed {
@@ -368,7 +394,12 @@ func (m *mcpTools) ensureLabel(uid, col, name string) (string, error) {
 	return r.Id, nil
 }
 
+// ensureTags resolves tag names to ids, creating unknown tags. A single
+// "none" entry means "no tags" (for clients that drop empty lists).
 func (m *mcpTools) ensureTags(uid string, names []string) ([]string, error) {
+	if len(names) == 1 && cleared(names[0]) {
+		return []string{}, nil
+	}
 	ids := make([]string, 0, len(names))
 	for _, n := range names {
 		id, err := m.ensureLabel(uid, "tags", n)
@@ -422,17 +453,18 @@ func txToOut(r *core.Record, cats, tags map[string]string) txOut {
 }
 
 type listTxInput struct {
-	Year     int    `json:"year,omitempty" jsonschema:"calendar year; ignored when from/to are given"`
-	From     string `json:"from,omitempty" jsonschema:"first date (inclusive), YYYY-MM-DD"`
-	To       string `json:"to,omitempty" jsonschema:"last date (inclusive), YYYY-MM-DD"`
-	Type     string `json:"type,omitempty" jsonschema:"income or expense"`
-	Area     string `json:"area,omitempty" jsonschema:"business, rental or private"`
-	Category string `json:"category,omitempty" jsonschema:"category name"`
-	Tag      string `json:"tag,omitempty" jsonschema:"tag name"`
-	Search   string `json:"search,omitempty" jsonschema:"text contained in the note"`
-	LoanID   string `json:"loan_id,omitempty" jsonschema:"only payments of this loan"`
-	Limit    int    `json:"limit,omitempty" jsonschema:"max rows, default 100, max 500"`
-	Offset   int    `json:"offset,omitempty"`
+	Year     int     `json:"year,omitempty" jsonschema:"calendar year; ignored when from/to are given"`
+	From     string  `json:"from,omitempty" jsonschema:"first date (inclusive), YYYY-MM-DD"`
+	To       string  `json:"to,omitempty" jsonschema:"last date (inclusive), YYYY-MM-DD"`
+	Type     string  `json:"type,omitempty" jsonschema:"income or expense"`
+	Area     string  `json:"area,omitempty" jsonschema:"business, rental or private"`
+	Category string  `json:"category,omitempty" jsonschema:"category name"`
+	Tag      string  `json:"tag,omitempty" jsonschema:"tag name"`
+	Search   string  `json:"search,omitempty" jsonschema:"text contained in the note"`
+	Amount   float64 `json:"amount,omitempty" jsonschema:"exact amount (within a cent)"`
+	LoanID   string  `json:"loan_id,omitempty" jsonschema:"only payments of this loan"`
+	Limit    int     `json:"limit,omitempty" jsonschema:"max rows, default 100, max 500"`
+	Offset   int     `json:"offset,omitempty"`
 }
 
 type listTxOutput struct {
@@ -511,6 +543,10 @@ func (m *mcpTools) listTransactions(ctx context.Context, _ *mcp.CallToolRequest,
 		where = append(where, "note ~ {:q}")
 		params["q"] = q
 	}
+	if in.Amount != 0 {
+		where = append(where, "amount > {:amin} && amount < {:amax}")
+		params["amin"], params["amax"] = in.Amount-0.005, in.Amount+0.005
+	}
 	if in.LoanID != "" {
 		where = append(where, "loan = {:loan}")
 		params["loan"] = in.LoanID
@@ -582,40 +618,60 @@ func (m *mcpTools) createTransaction(ctx context.Context, _ *mcp.CallToolRequest
 	if err != nil {
 		return nil, txOut{}, err
 	}
-	if err := oneOf("type", in.Type, "income", "expense"); err != nil {
+	r, err := m.newTransaction(u.Id, in)
+	if err != nil {
 		return nil, txOut{}, err
+	}
+	return m.txResult(u.Id, r)
+}
+
+// normalized applies the input defaults (today, business) and validates the
+// enum fields and the date.
+func (in createTxInput) normalized() (createTxInput, time.Time, error) {
+	if err := oneOf("type", in.Type, "income", "expense"); err != nil {
+		return in, time.Time{}, err
 	}
 	if in.Area == "" {
 		in.Area = "business"
 	}
 	if err := oneOf("area", in.Area, "business", "rental", "private"); err != nil {
-		return nil, txOut{}, err
+		return in, time.Time{}, err
 	}
 	date := today()
 	if in.Date != "" {
+		var err error
 		if date, err = parseDate(in.Date); err != nil {
-			return nil, txOut{}, err
+			return in, time.Time{}, err
 		}
+	}
+	return in, date, nil
+}
+
+// newTransaction validates one create input, resolves its labels and saves it.
+func (m *mcpTools) newTransaction(uid string, in createTxInput) (*core.Record, error) {
+	in, date, err := in.normalized()
+	if err != nil {
+		return nil, err
 	}
 	if in.LoanID != "" {
-		if _, err := m.owned(u.Id, "loans", in.LoanID); err != nil {
-			return nil, txOut{}, err
+		if _, err := m.owned(uid, "loans", in.LoanID); err != nil {
+			return nil, err
 		}
 	}
-	cat, err := m.ensureLabel(u.Id, "categories", in.Category)
+	cat, err := m.ensureLabel(uid, "categories", in.Category)
 	if err != nil {
-		return nil, txOut{}, err
+		return nil, err
 	}
-	tagIds, err := m.ensureTags(u.Id, in.Tags)
+	tagIds, err := m.ensureTags(uid, in.Tags)
 	if err != nil {
-		return nil, txOut{}, err
+		return nil, err
 	}
 	col, err := m.app.FindCollectionByNameOrId("transactions")
 	if err != nil {
-		return nil, txOut{}, err
+		return nil, err
 	}
 	r := core.NewRecord(col)
-	r.Set("user", u.Id)
+	r.Set("user", uid)
 	r.Set("type", in.Type)
 	r.Set("date", date)
 	r.Set("amount", in.Amount)
@@ -626,9 +682,95 @@ func (m *mcpTools) createTransaction(ctx context.Context, _ *mcp.CallToolRequest
 	r.Set("loan", in.LoanID)
 	r.Set("loan_interest", in.LoanInterest)
 	if err := m.app.Save(r); err != nil {
-		return nil, txOut{}, err
+		return nil, err
 	}
-	return m.txResult(u.Id, r)
+	return r, nil
+}
+
+// findDuplicate returns the id of an existing transaction with the same
+// date, type, amount (within a cent) and area, or "".
+func (m *mcpTools) findDuplicate(uid string, in createTxInput) (string, error) {
+	in, date, err := in.normalized()
+	if err != nil {
+		return "", err
+	}
+	recs, err := m.app.FindRecordsByFilter("transactions",
+		"user = {:uid} && type = {:type} && area = {:area} && date >= {:from} && date < {:to} && amount > {:amin} && amount < {:amax}",
+		"", 1, 0, dbx.Params{
+			"uid": uid, "type": in.Type, "area": in.Area,
+			"from": date.Format(types.DefaultDateLayout), "to": date.AddDate(0, 0, 1).Format(types.DefaultDateLayout),
+			"amin": in.Amount - 0.005, "amax": in.Amount + 0.005,
+		})
+	if err != nil || len(recs) == 0 {
+		return "", err
+	}
+	return recs[0].Id, nil
+}
+
+const maxBatchCreate = 200
+
+type createTxBatchInput struct {
+	Items          []createTxInput `json:"items" jsonschema:"transactions to create, in order (max 200)"`
+	SkipDuplicates bool            `json:"skip_duplicates,omitempty" jsonschema:"skip items for which a transaction with the same date, type, amount and area already exists (they are listed in skipped); makes re-running an import safe"`
+}
+
+type skippedOut struct {
+	Index       int    `json:"index" jsonschema:"position in items"`
+	DuplicateOf string `json:"duplicate_of" jsonschema:"id of the existing transaction"`
+}
+
+type createTxBatchOutput struct {
+	Items   []txOut      `json:"items" jsonschema:"the created transactions, in input order"`
+	Created int          `json:"created"`
+	Skipped []skippedOut `json:"skipped,omitempty"`
+}
+
+func (m *mcpTools) createTransactions(ctx context.Context, _ *mcp.CallToolRequest, in createTxBatchInput) (*mcp.CallToolResult, createTxBatchOutput, error) {
+	out := createTxBatchOutput{Items: []txOut{}}
+	u, err := writeUser(ctx)
+	if err != nil {
+		return nil, out, err
+	}
+	if len(in.Items) == 0 {
+		return nil, out, errors.New("items must not be empty")
+	}
+	if len(in.Items) > maxBatchCreate {
+		return nil, out, fmt.Errorf("at most %d items per call", maxBatchCreate)
+	}
+	var created []*core.Record
+	err = m.app.RunInTransaction(func(txApp core.App) error {
+		tx := &mcpTools{app: txApp}
+		for i, item := range in.Items {
+			if in.SkipDuplicates {
+				dup, err := tx.findDuplicate(u.Id, item)
+				if err != nil {
+					return fmt.Errorf("item %d: %w", i, err)
+				}
+				if dup != "" {
+					out.Skipped = append(out.Skipped, skippedOut{Index: i, DuplicateOf: dup})
+					continue
+				}
+			}
+			r, err := tx.newTransaction(u.Id, item)
+			if err != nil {
+				return fmt.Errorf("item %d: %w", i, err)
+			}
+			created = append(created, r)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, createTxBatchOutput{Items: []txOut{}}, err
+	}
+	cats, tags, err := m.catsAndTags(u.Id)
+	if err != nil {
+		return nil, out, err
+	}
+	for _, r := range created {
+		out.Items = append(out.Items, txToOut(r, cats, tags))
+	}
+	out.Created = len(created)
+	return nil, out, nil
 }
 
 type updateTxInput struct {
@@ -637,10 +779,12 @@ type updateTxInput struct {
 	Amount       *float64 `json:"amount,omitempty"`
 	Date         *string  `json:"date,omitempty" jsonschema:"YYYY-MM-DD"`
 	Area         *string  `json:"area,omitempty" jsonschema:"business, rental or private"`
-	Category     *string  `json:"category,omitempty" jsonschema:"category name (created if new); empty string clears it"`
-	Tags         []string `json:"tags,omitempty" jsonschema:"replaces all tags; empty list clears them"`
+	Category     *string  `json:"category,omitempty" jsonschema:"category name (created if new); 'none' clears it"`
+	Tags         []string `json:"tags,omitempty" jsonschema:"replaces all tags; ['none'] clears them"`
+	AddTags      []string `json:"add_tags,omitempty" jsonschema:"tag names to add (created if new), keeping the existing ones"`
+	RemoveTags   []string `json:"remove_tags,omitempty" jsonschema:"tag names to remove"`
 	Note         *string  `json:"note,omitempty"`
-	LoanID       *string  `json:"loan_id,omitempty" jsonschema:"empty string unlinks the loan"`
+	LoanID       *string  `json:"loan_id,omitempty" jsonschema:"'none' unlinks the loan"`
 	LoanInterest *float64 `json:"loan_interest,omitempty"`
 }
 
@@ -676,7 +820,7 @@ func (m *mcpTools) updateTransaction(ctx context.Context, _ *mcp.CallToolRequest
 		r.Set("area", *in.Area)
 	}
 	if in.Category != nil {
-		id, err := m.ensureLabel(u.Id, "categories", *in.Category)
+		id, err := m.categoryID(u.Id, *in.Category)
 		if err != nil {
 			return nil, txOut{}, err
 		}
@@ -689,16 +833,25 @@ func (m *mcpTools) updateTransaction(ctx context.Context, _ *mcp.CallToolRequest
 		}
 		r.Set("tags", ids)
 	}
+	if len(in.AddTags) > 0 || len(in.RemoveTags) > 0 {
+		ids, err := m.changeTags(u.Id, r.GetStringSlice("tags"), in.AddTags, in.RemoveTags)
+		if err != nil {
+			return nil, txOut{}, err
+		}
+		r.Set("tags", ids)
+	}
 	if in.Note != nil {
 		r.Set("note", *in.Note)
 	}
 	if in.LoanID != nil {
-		if *in.LoanID != "" {
+		if cleared(*in.LoanID) {
+			r.Set("loan", "")
+		} else {
 			if _, err := m.owned(u.Id, "loans", *in.LoanID); err != nil {
 				return nil, txOut{}, err
 			}
+			r.Set("loan", strings.TrimSpace(*in.LoanID))
 		}
-		r.Set("loan", *in.LoanID)
 	}
 	if in.LoanInterest != nil {
 		r.Set("loan_interest", *in.LoanInterest)
@@ -707,6 +860,96 @@ func (m *mcpTools) updateTransaction(ctx context.Context, _ *mcp.CallToolRequest
 		return nil, txOut{}, err
 	}
 	return m.txResult(u.Id, r)
+}
+
+// categoryID resolves a category name for an update ("none"/"" → no category).
+func (m *mcpTools) categoryID(uid, name string) (string, error) {
+	if cleared(name) {
+		return "", nil
+	}
+	return m.ensureLabel(uid, "categories", name)
+}
+
+// changeTags applies add/remove tag names to a list of tag ids. Added tags
+// are created when unknown; removing an unknown tag is a no-op.
+func (m *mcpTools) changeTags(uid string, current, add, remove []string) ([]string, error) {
+	addIds, err := m.ensureTags(uid, add)
+	if err != nil {
+		return nil, err
+	}
+	drop := map[string]bool{}
+	if len(remove) > 0 {
+		all, err := m.labels(uid, "tags")
+		if err != nil {
+			return nil, err
+		}
+		for _, n := range remove {
+			if id := findLabel(all, strings.TrimSpace(n)); id != "" {
+				drop[id] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(current)+len(addIds))
+	seen := map[string]bool{}
+	for _, id := range append(append([]string{}, current...), addIds...) {
+		if !drop[id] && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+const maxBatchTag = 500
+
+type tagTxInput struct {
+	IDs        []string `json:"ids" jsonschema:"transaction ids (max 500)"`
+	AddTags    []string `json:"add_tags,omitempty" jsonschema:"tag names to add (created if new)"`
+	RemoveTags []string `json:"remove_tags,omitempty" jsonschema:"tag names to remove"`
+}
+
+type updatedOutput struct {
+	Updated int `json:"updated" jsonschema:"number of transactions changed"`
+}
+
+func (m *mcpTools) tagTransactions(ctx context.Context, _ *mcp.CallToolRequest, in tagTxInput) (*mcp.CallToolResult, updatedOutput, error) {
+	u, err := writeUser(ctx)
+	if err != nil {
+		return nil, updatedOutput{}, err
+	}
+	if len(in.IDs) == 0 {
+		return nil, updatedOutput{}, errors.New("ids must not be empty")
+	}
+	if len(in.IDs) > maxBatchTag {
+		return nil, updatedOutput{}, fmt.Errorf("at most %d ids per call", maxBatchTag)
+	}
+	if len(in.AddTags) == 0 && len(in.RemoveTags) == 0 {
+		return nil, updatedOutput{}, errors.New("nothing to do: give add_tags and/or remove_tags")
+	}
+	n := 0
+	err = m.app.RunInTransaction(func(txApp core.App) error {
+		tx := &mcpTools{app: txApp}
+		for _, id := range in.IDs {
+			r, err := tx.owned(u.Id, "transactions", id)
+			if err != nil {
+				return err
+			}
+			ids, err := tx.changeTags(u.Id, r.GetStringSlice("tags"), in.AddTags, in.RemoveTags)
+			if err != nil {
+				return err
+			}
+			r.Set("tags", ids)
+			if err := txApp.Save(r); err != nil {
+				return err
+			}
+			n++
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, updatedOutput{}, err
+	}
+	return nil, updatedOutput{Updated: n}, nil
 }
 
 type deletedOutput struct {
@@ -778,6 +1021,175 @@ func (m *mcpTools) listLabels(ctx context.Context, col string, idsOf func(*core.
 		out.Items = append(out.Items, labelOut{ID: id, Name: name, Transactions: counts[id]})
 	}
 	sort.Slice(out.Items, func(i, j int) bool { return strings.ToLower(out.Items[i].Name) < strings.ToLower(out.Items[j].Name) })
+	return nil, out, nil
+}
+
+// labelCol maps the tool-facing kind to its collection.
+func labelCol(kind string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "category", "categories":
+		return "categories", nil
+	case "tag", "tags":
+		return "tags", nil
+	}
+	return "", errors.New("kind must be category or tag")
+}
+
+// labelUsers loads the user's transactions and recurring templates that use
+// a label (category relation or tags list), so a merge can relink them.
+func (m *mcpTools) labelUsers(uid, col, id string) ([]*core.Record, error) {
+	field := "category"
+	op := "="
+	if col == "tags" {
+		field, op = "tags", "~"
+	}
+	var out []*core.Record
+	for _, c := range []string{"transactions", "recurring"} {
+		recs, err := m.app.FindRecordsByFilter(c, "user = {:uid} && "+field+" "+op+" {:id}", "", 0, 0, dbx.Params{"uid": uid, "id": id})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, recs...)
+	}
+	return out, nil
+}
+
+type renameLabelInput struct {
+	Kind    string `json:"kind" jsonschema:"category or tag"`
+	Name    string `json:"name" jsonschema:"current name"`
+	NewName string `json:"new_name" jsonschema:"new name; if it already exists the two are merged"`
+}
+
+type renameLabelOutput struct {
+	labelOut
+	Merged bool `json:"merged" jsonschema:"true when the label was merged into an existing one"`
+}
+
+func (m *mcpTools) renameLabel(ctx context.Context, _ *mcp.CallToolRequest, in renameLabelInput) (*mcp.CallToolResult, renameLabelOutput, error) {
+	var out renameLabelOutput
+	u, err := writeUser(ctx)
+	if err != nil {
+		return nil, out, err
+	}
+	col, err := labelCol(in.Kind)
+	if err != nil {
+		return nil, out, err
+	}
+	newName := strings.TrimSpace(in.NewName)
+	if newName == "" {
+		return nil, out, errors.New("new_name must not be empty")
+	}
+	all, err := m.labels(u.Id, col)
+	if err != nil {
+		return nil, out, err
+	}
+	oldID := findLabel(all, strings.TrimSpace(in.Name))
+	if oldID == "" {
+		return nil, out, fmt.Errorf("%s %q not found", strings.TrimSuffix(col, "s"), in.Name)
+	}
+	targetID := findLabel(all, newName)
+	if targetID == "" || targetID == oldID {
+		// plain rename (also case-only changes)
+		r, err := m.app.FindRecordById(col, oldID)
+		if err != nil {
+			return nil, out, err
+		}
+		r.Set("name", newName)
+		if err := m.app.Save(r); err != nil {
+			return nil, out, err
+		}
+		targetID = oldID
+	} else {
+		// merge: relink every user of the old label, then delete it
+		users, err := m.labelUsers(u.Id, col, oldID)
+		if err != nil {
+			return nil, out, err
+		}
+		err = m.app.RunInTransaction(func(txApp core.App) error {
+			for _, r := range users {
+				if col == "categories" {
+					r.Set("category", targetID)
+				} else {
+					ids := []string{}
+					for _, id := range r.GetStringSlice("tags") {
+						if id != oldID && id != targetID {
+							ids = append(ids, id)
+						}
+					}
+					r.Set("tags", append(ids, targetID))
+				}
+				if err := txApp.Save(r); err != nil {
+					return err
+				}
+			}
+			old, err := txApp.FindRecordById(col, oldID)
+			if err != nil {
+				return err
+			}
+			return txApp.Delete(old)
+		})
+		if err != nil {
+			return nil, out, err
+		}
+		out.Merged = true
+	}
+	n, err := m.app.CountRecords("transactions", dbx.NewExp(map[string]string{"categories": "category = {:id}", "tags": "tags LIKE {:like}"}[col],
+		dbx.Params{"id": targetID, "like": "%" + targetID + "%"}))
+	if err != nil {
+		return nil, out, err
+	}
+	out.labelOut = labelOut{ID: targetID, Name: all[targetID], Transactions: int(n)}
+	if targetID == oldID {
+		out.Name = newName
+	}
+	return nil, out, nil
+}
+
+type deleteLabelInput struct {
+	Kind string `json:"kind" jsonschema:"category or tag"`
+	Name string `json:"name"`
+}
+
+type deleteLabelOutput struct {
+	Deleted      string `json:"deleted" jsonschema:"id of the deleted label"`
+	Transactions int    `json:"transactions" jsonschema:"how many transactions were using it (they are kept)"`
+}
+
+func (m *mcpTools) deleteLabel(ctx context.Context, _ *mcp.CallToolRequest, in deleteLabelInput) (*mcp.CallToolResult, deleteLabelOutput, error) {
+	var out deleteLabelOutput
+	u, err := writeUser(ctx)
+	if err != nil {
+		return nil, out, err
+	}
+	col, err := labelCol(in.Kind)
+	if err != nil {
+		return nil, out, err
+	}
+	all, err := m.labels(u.Id, col)
+	if err != nil {
+		return nil, out, err
+	}
+	id := findLabel(all, strings.TrimSpace(in.Name))
+	if id == "" {
+		return nil, out, fmt.Errorf("%s %q not found", strings.TrimSuffix(col, "s"), in.Name)
+	}
+	users, err := m.labelUsers(u.Id, col, id)
+	if err != nil {
+		return nil, out, err
+	}
+	for _, r := range users {
+		if r.Collection().Name == "transactions" {
+			out.Transactions++
+		}
+	}
+	r, err := m.app.FindRecordById(col, id)
+	if err != nil {
+		return nil, out, err
+	}
+	if err := m.app.Delete(r); err != nil { // relations are cleared by PocketBase
+		return nil, out, err
+	}
+	out.Deleted = id
 	return nil, out, nil
 }
 
@@ -1169,10 +1581,10 @@ type updateRecurringInput struct {
 	Amount       *float64 `json:"amount,omitempty"`
 	Interval     *string  `json:"interval,omitempty" jsonschema:"weekly, monthly, quarterly, half-yearly, yearly, or '<n> weeks|months|years' (e.g. '2 weeks', '18 months')"`
 	Start        *string  `json:"start,omitempty" jsonschema:"YYYY-MM-DD"`
-	End          *string  `json:"end,omitempty" jsonschema:"YYYY-MM-DD; empty string makes it open-ended"`
+	End          *string  `json:"end,omitempty" jsonschema:"YYYY-MM-DD; 'none' makes it open-ended"`
 	Area         *string  `json:"area,omitempty" jsonschema:"business, rental or private"`
-	Category     *string  `json:"category,omitempty" jsonschema:"category name (created if new); empty string clears it"`
-	Tags         []string `json:"tags,omitempty" jsonschema:"replaces all tags; empty list clears them"`
+	Category     *string  `json:"category,omitempty" jsonschema:"category name (created if new); 'none' clears it"`
+	Tags         []string `json:"tags,omitempty" jsonschema:"replaces all tags; ['none'] clears them"`
 	Note         *string  `json:"note,omitempty"`
 	WeekdaysOnly *bool    `json:"weekdays_only,omitempty"`
 	Active       *bool    `json:"active,omitempty" jsonschema:"false pauses the template"`
@@ -1211,7 +1623,7 @@ func (m *mcpTools) updateRecurring(ctx context.Context, _ *mcp.CallToolRequest, 
 		r.Set("start", d)
 	}
 	if in.End != nil {
-		if *in.End == "" {
+		if cleared(*in.End) {
 			r.Set("end", nil)
 		} else {
 			d, err := parseDate(*in.End)
@@ -1228,7 +1640,7 @@ func (m *mcpTools) updateRecurring(ctx context.Context, _ *mcp.CallToolRequest, 
 		r.Set("area", *in.Area)
 	}
 	if in.Category != nil {
-		id, err := m.ensureLabel(u.Id, "categories", *in.Category)
+		id, err := m.categoryID(u.Id, *in.Category)
 		if err != nil {
 			return nil, recurringOut{}, err
 		}
@@ -1366,6 +1778,62 @@ func (m *mcpTools) createLoan(ctx context.Context, _ *mcp.CallToolRequest, in cr
 	}
 	o, err := m.loanOut(r)
 	return nil, o, err
+}
+
+type updateLoanInput struct {
+	ID           string   `json:"id"`
+	Name         *string  `json:"name,omitempty"`
+	Principal    *float64 `json:"principal,omitempty" jsonschema:"amount borrowed in EUR"`
+	InterestRate *float64 `json:"interest_rate,omitempty" jsonschema:"annual %"`
+	Start        *string  `json:"start,omitempty" jsonschema:"YYYY-MM-DD; 'none' clears it"`
+	Note         *string  `json:"note,omitempty"`
+	Closed       *bool    `json:"closed,omitempty" jsonschema:"true archives the loan (hidden from the overview), false reopens it"`
+}
+
+func (m *mcpTools) updateLoan(ctx context.Context, _ *mcp.CallToolRequest, in updateLoanInput) (*mcp.CallToolResult, loanOut, error) {
+	u, err := writeUser(ctx)
+	if err != nil {
+		return nil, loanOut{}, err
+	}
+	r, err := m.owned(u.Id, "loans", in.ID)
+	if err != nil {
+		return nil, loanOut{}, err
+	}
+	if in.Name != nil {
+		r.Set("name", strings.TrimSpace(*in.Name))
+	}
+	if in.Principal != nil {
+		r.Set("principal", *in.Principal)
+	}
+	if in.InterestRate != nil {
+		r.Set("interest_rate", *in.InterestRate)
+	}
+	if in.Start != nil {
+		if cleared(*in.Start) {
+			r.Set("start", nil)
+		} else {
+			d, err := parseDate(*in.Start)
+			if err != nil {
+				return nil, loanOut{}, err
+			}
+			r.Set("start", d)
+		}
+	}
+	if in.Note != nil {
+		r.Set("note", *in.Note)
+	}
+	if in.Closed != nil {
+		r.Set("closed", *in.Closed)
+	}
+	if err := m.app.Save(r); err != nil {
+		return nil, loanOut{}, err
+	}
+	o, err := m.loanOut(r)
+	return nil, o, err
+}
+
+func (m *mcpTools) deleteLoan(ctx context.Context, _ *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, deletedOutput, error) {
+	return m.deleteOwned(ctx, "loans", in.ID)
 }
 
 func ptr[T any](v T) *T { return &v }

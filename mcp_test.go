@@ -346,6 +346,168 @@ func TestMCPRecurringAndLoans(t *testing.T) {
 	}
 }
 
+func TestMCPBatchAndTags(t *testing.T) {
+	env := newMCPEnv(t)
+	u := env.user(t, "a@example.com")
+	cs := env.session(t, staticToken(t, u))
+
+	items := []map[string]any{
+		{"type": "income", "amount": 850, "date": "2026-01-05", "area": "rental", "category": "Miete", "tags": []string{"Haus"}},
+		{"type": "expense", "amount": 120.5, "date": "2026-01-07", "area": "rental", "category": "Repairs"},
+		{"type": "expense", "amount": 30, "date": "2026-01-09", "area": "rental"},
+	}
+	// all-or-nothing: an invalid item rolls back the whole batch
+	bad := append(append([]map[string]any{}, items...), map[string]any{"type": "gift", "amount": 1})
+	if msg := callErr(t, cs, "create_transactions", map[string]any{"items": bad}); !strings.Contains(msg, "item 3") {
+		t.Fatalf("batch error should name the item: %s", msg)
+	}
+	if n, _ := env.app.CountRecords("transactions", dbx.HashExp{"user": u.Id}); n != 0 {
+		t.Fatalf("failed batch left %d rows", n)
+	}
+	batch := call[createTxBatchOutput](t, cs, "create_transactions", map[string]any{"items": items})
+	if batch.Created != 3 || len(batch.Items) != 3 || batch.Items[0].Category != "Miete" || len(batch.Skipped) != 0 {
+		t.Fatalf("batch: %+v", batch)
+	}
+	// re-running the import with skip_duplicates creates nothing new
+	again := call[createTxBatchOutput](t, cs, "create_transactions", map[string]any{"items": items, "skip_duplicates": true})
+	if again.Created != 0 || len(again.Skipped) != 3 || again.Skipped[1].Index != 1 || again.Skipped[1].DuplicateOf != batch.Items[1].ID {
+		t.Fatalf("skip_duplicates: %+v", again)
+	}
+	// ... while without the flag duplicates are allowed on purpose
+	if dup := call[createTxBatchOutput](t, cs, "create_transactions", map[string]any{"items": items[2:]}); dup.Created != 1 {
+		t.Fatalf("duplicate without flag: %+v", dup)
+	}
+	callErr(t, cs, "create_transactions", map[string]any{"items": []map[string]any{}})
+
+	// exact amount lookup
+	if got := call[listTxOutput](t, cs, "list_transactions", map[string]any{"from": "2026-01-01", "to": "2026-01-31", "amount": 120.5}); len(got.Items) != 1 || got.Items[0].ID != batch.Items[1].ID {
+		t.Fatalf("amount filter: %+v", got)
+	}
+
+	// incremental tags on one row, bulk on many
+	one := call[txOut](t, cs, "update_transaction", map[string]any{"id": batch.Items[0].ID, "add_tags": []string{"Zarfl"}, "remove_tags": []string{"nope"}})
+	if len(one.Tags) != 2 || one.Tags[0] != "Haus" || one.Tags[1] != "Zarfl" {
+		t.Fatalf("add_tags kept/added: %+v", one.Tags)
+	}
+	ids := []string{batch.Items[0].ID, batch.Items[1].ID, batch.Items[2].ID}
+	if got := call[updatedOutput](t, cs, "tag_transactions", map[string]any{"ids": ids, "add_tags": []string{"Zarfl", "2026"}}); got.Updated != 3 {
+		t.Fatalf("tag_transactions: %+v", got)
+	}
+	if got := call[txOut](t, cs, "get_transaction", map[string]any{"id": batch.Items[0].ID}); len(got.Tags) != 3 { // no duplicate Zarfl
+		t.Fatalf("bulk add dedup: %+v", got.Tags)
+	}
+	if got := call[updatedOutput](t, cs, "tag_transactions", map[string]any{"ids": ids[:2], "remove_tags": []string{"zarfl"}}); got.Updated != 2 {
+		t.Fatalf("bulk remove: %+v", got)
+	}
+	if got := call[listTxOutput](t, cs, "list_transactions", map[string]any{"tag": "Zarfl"}); len(got.Items) != 1 {
+		t.Fatalf("after bulk remove: %d rows still tagged", len(got.Items))
+	}
+	callErr(t, cs, "tag_transactions", map[string]any{"ids": ids})
+	// a foreign id rolls the whole call back
+	other := env.user(t, "b@example.com")
+	foreign := call[txOut](t, env.session(t, staticToken(t, other)), "create_transaction", map[string]any{"type": "expense", "amount": 1})
+	callErr(t, cs, "tag_transactions", map[string]any{"ids": []string{ids[2], foreign.ID}, "add_tags": []string{"x"}})
+	if got := call[txOut](t, cs, "get_transaction", map[string]any{"id": ids[2]}); len(got.Tags) != 2 {
+		t.Fatalf("partial bulk update was not rolled back: %+v", got.Tags)
+	}
+
+	// "none" clears optional fields (clients may drop empty strings)
+	loan := call[loanOut](t, cs, "create_loan", map[string]any{"name": "Haus", "principal": 3000})
+	call[txOut](t, cs, "update_transaction", map[string]any{"id": ids[1], "loan_id": loan.ID})
+	cleared := call[txOut](t, cs, "update_transaction", map[string]any{"id": ids[1], "loan_id": "none", "category": "None", "tags": []string{"none"}})
+	if cleared.LoanID != "" || cleared.Category != "" || len(cleared.Tags) != 0 {
+		t.Fatalf("none did not clear: %+v", cleared)
+	}
+}
+
+func TestMCPLabels(t *testing.T) {
+	env := newMCPEnv(t)
+	u := env.user(t, "a@example.com")
+	cs := env.session(t, staticToken(t, u))
+
+	a := call[txOut](t, cs, "create_transaction", map[string]any{"type": "expense", "amount": 1, "category": "Softwre", "tags": []string{"acme", "old"}})
+	b := call[txOut](t, cs, "create_transaction", map[string]any{"type": "expense", "amount": 2, "category": "Software", "tags": []string{"new"}})
+	// the template starts today, so it generates one transaction (Softwre, old) right away
+	call[createRecurringOutput](t, cs, "create_recurring", map[string]any{"type": "expense", "amount": 3, "interval": "monthly", "category": "Softwre", "tags": []string{"old"}})
+
+	// plain rename, then case-only rename
+	if got := call[renameLabelOutput](t, cs, "rename_label", map[string]any{"kind": "tag", "name": "ACME", "new_name": "Acme Corp"}); got.Merged || got.Name != "Acme Corp" || got.Transactions != 1 {
+		t.Fatalf("rename tag: %+v", got)
+	}
+	if got := call[renameLabelOutput](t, cs, "rename_label", map[string]any{"kind": "tag", "name": "acme corp", "new_name": "ACME Corp"}); got.Merged || got.Name != "ACME Corp" {
+		t.Fatalf("case-only rename: %+v", got)
+	}
+	// rename onto an existing name merges: transactions and templates move over
+	m := call[renameLabelOutput](t, cs, "rename_label", map[string]any{"kind": "category", "name": "Softwre", "new_name": "software"})
+	if !m.Merged || m.Name != "Software" || m.Transactions != 3 {
+		t.Fatalf("merge category: %+v", m)
+	}
+	if got := call[txOut](t, cs, "get_transaction", map[string]any{"id": a.ID}); got.Category != "Software" {
+		t.Fatalf("merged transaction: %+v", got)
+	}
+	if got := call[recurringListOutput](t, cs, "list_recurring", nil); got.Items[0].Category != "Software" {
+		t.Fatalf("merged template: %+v", got.Items[0])
+	}
+	if cats := call[labelsOutput](t, cs, "list_categories", nil); len(cats.Items) != 1 {
+		t.Fatalf("old category survived the merge: %+v", cats)
+	}
+	tm := call[renameLabelOutput](t, cs, "rename_label", map[string]any{"kind": "tag", "name": "old", "new_name": "new"})
+	if !tm.Merged || tm.Transactions != 3 {
+		t.Fatalf("merge tag: %+v", tm)
+	}
+	if got := call[txOut](t, cs, "get_transaction", map[string]any{"id": a.ID}); len(got.Tags) != 2 || got.Tags[1] != "new" {
+		t.Fatalf("merged tags: %+v", got.Tags)
+	}
+	if got := call[txOut](t, cs, "get_transaction", map[string]any{"id": b.ID}); len(got.Tags) != 1 {
+		t.Fatalf("target row got a duplicate tag: %+v", got.Tags)
+	}
+	if got := call[recurringListOutput](t, cs, "list_recurring", nil); len(got.Items[0].Tags) != 1 || got.Items[0].Tags[0] != "new" {
+		t.Fatalf("merged template tags: %+v", got.Items[0].Tags)
+	}
+	// delete keeps the rows
+	if got := call[deleteLabelOutput](t, cs, "delete_label", map[string]any{"kind": "category", "name": "Software"}); got.Transactions != 3 || got.Deleted == "" {
+		t.Fatalf("delete category: %+v", got)
+	}
+	if got := call[txOut](t, cs, "get_transaction", map[string]any{"id": b.ID}); got.Category != "" {
+		t.Fatalf("category not cleared on the transaction: %+v", got)
+	}
+	callErr(t, cs, "delete_label", map[string]any{"kind": "category", "name": "Software"})
+	callErr(t, cs, "rename_label", map[string]any{"kind": "thing", "name": "x", "new_name": "y"})
+
+	// other users' labels are invisible
+	csB := env.session(t, staticToken(t, env.user(t, "b@example.com")))
+	callErr(t, csB, "rename_label", map[string]any{"kind": "tag", "name": "new", "new_name": "mine"})
+}
+
+func TestMCPLoanUpdateDelete(t *testing.T) {
+	env := newMCPEnv(t)
+	u := env.user(t, "a@example.com")
+	cs := env.session(t, staticToken(t, u))
+
+	loan := call[loanOut](t, cs, "create_loan", map[string]any{"name": "Haus", "principal": 3000, "start": "2025-01-01"})
+	call[txOut](t, cs, "create_transaction", map[string]any{"type": "expense", "amount": 500, "loan_id": loan.ID, "loan_interest": 20})
+	upd := call[loanOut](t, cs, "update_loan", map[string]any{"id": loan.ID, "name": "Haus 2026", "principal": 4500, "start": "none", "closed": true})
+	if upd.Name != "Haus 2026" || upd.Principal != 4500 || upd.Start != "" || !upd.Closed || upd.Remaining != 4020 || upd.Payments != 1 {
+		t.Fatalf("update_loan: %+v", upd)
+	}
+	if got := call[loanOut](t, cs, "update_loan", map[string]any{"id": loan.ID, "closed": false}); got.Closed || got.Name != "Haus 2026" {
+		t.Fatalf("reopen: %+v", got)
+	}
+	callErr(t, cs, "update_loan", map[string]any{"id": loan.ID, "start": "yesterday"})
+	csB := env.session(t, staticToken(t, env.user(t, "b@example.com")))
+	callErr(t, csB, "update_loan", map[string]any{"id": loan.ID, "name": "hijacked"})
+	callErr(t, csB, "delete_loan", map[string]any{"id": loan.ID})
+
+	call[deletedOutput](t, cs, "delete_loan", map[string]any{"id": loan.ID})
+	if got := call[loansOutput](t, cs, "list_loans", nil); len(got.Items) != 0 {
+		t.Fatalf("loan not deleted: %+v", got)
+	}
+	txs := call[listTxOutput](t, cs, "list_transactions", nil)
+	if len(txs.Items) != 1 || txs.Items[0].LoanID != "" {
+		t.Fatalf("payment should be kept and unlinked: %+v", txs)
+	}
+}
+
 func TestTokenEndpoints(t *testing.T) {
 	env := newMCPEnv(t)
 	u := env.user(t, "a@example.com")

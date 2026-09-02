@@ -263,14 +263,23 @@ AI agents get a first-class API instead of scraping the PocketBase REST API:
   "ask the user for a Read & write token on #/connect" to the instructions, and answers calls to write-tool
   names with that notice as a tool error (receiving middleware). The write handlers check the scope as well.
 - **Tools** (all filtered by `user = auth.id`; ids of other users' records read as "not found"):
-  transactions (`list_transactions` with year / date range / type / area / category / tag / note search / loan
-  filters and `limit`+`offset` paging, `get_`, `create_`, `update_` (partial; empty string clears category/loan,
-  empty list clears tags), `delete_`), `list_categories` / `list_tags` (with usage counts), `year_summary`
-  (Go port of `aggregate()` + `projectRecurring()` from the UI — keep in sync), `get_tax_rule` (active rule script;
-  evaluated by the agent, not by the server — no JS engine in the binary), recurring (`list_`, `create_` — the create
-  hook backfills and the tool reports how many transactions it generated —, `update_`, `delete_`), loans
-  (`list_loans` with repaid / interest / remaining, `create_loan`).
-  Categories and tags are addressed by name (case-insensitive) and created on demand.
+  transactions (`list_transactions` with year / date range / type / area / category / tag / note search / exact
+  amount / loan filters and `limit`+`offset` paging, `get_`, `create_`, `create_transactions` — up to 200 items in
+  one DB transaction, `skip_duplicates` skips items matching an existing row on date+type+amount+area and reports
+  them —, `update_` (partial; `tags` replaces, `add_tags`/`remove_tags` change incrementally), `tag_transactions`
+  (add/remove tags on up to 500 ids, atomic), `delete_`), `list_categories` / `list_tags` (with usage counts),
+  `rename_label` / `delete_label` (`kind`: category|tag; renaming onto an existing name merges — transactions and
+  templates are relinked, the old label deleted; deleting keeps the rows, PocketBase clears the relation),
+  `year_summary` (Go port of `aggregate()` + `projectRecurring()` from the UI — keep in sync), `get_tax_rule`
+  (active rule script; evaluated by the agent, not by the server — no JS engine in the binary), recurring (`list_`,
+  `create_` — the create hook backfills and the tool reports how many transactions it generated —, `update_`,
+  `delete_`), loans (`list_loans` with repaid / interest / remaining, `create_`, `update_` incl. `closed`,
+  `delete_` — payments are kept and unlinked).
+  Categories and tags are addressed by name (case-insensitive) and created on demand. Optional fields are cleared
+  in update tools with `"none"` (or an empty string; some MCP clients drop empty strings from arguments, so the
+  sentinel is the documented way): category, loan_id, end, start; `tags: ["none"]` clears tags.
+  Batch tools run in `RunInTransaction` with a `mcpTools{app: txApp}` clone so the per-item helpers reuse the
+  transaction; any bad item rolls back the whole call.
 - **UI**: `#/connect` ("AI & API") — create token (30 d / 1 y / 5 y), shown once with copy button, snippets for
   Claude Code (`claude mcp add --transport http … --header`), generic `mcpServers` JSON and an `mcp-remote` bridge,
   tool overview, revoke-all.

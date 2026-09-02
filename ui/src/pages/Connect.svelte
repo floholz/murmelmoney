@@ -39,14 +39,16 @@
   const bridgeConfig = $derived(JSON.stringify({ mcpServers: { murmelmoney: { command: 'npx', args: ['-y', 'mcp-remote', endpoint, '--header', `Authorization:Bearer ${shown}`] } } }, null, 2))
 
   const tools: [string, string, boolean][] = [
-    ['list_transactions · get_transaction', 'filter by year / date range, type, area, category, tag, note text or loan', true],
+    ['list_transactions · get_transaction', 'filter by year / date range, type, area, category, tag, note text, exact amount or loan', true],
     ['list_categories · list_tags', 'with usage counts', true],
     ['year_summary', 'totals per area, category and tag plus the projected recurring amounts — the overview page as data', true],
     ['get_tax_rule', 'your active tax script, so the agent can estimate what to put aside', true],
     ['list_recurring · list_loans', 'templates with their next occurrence; balance, repaid and interest per loan', true],
     ['create_transaction · update_transaction · delete_transaction', 'categories and tags by name, created on the fly', false],
+    ['create_transactions · tag_transactions', 'batch import (all-or-nothing, optional duplicate skipping) and bulk add/remove tags', false],
+    ['rename_label · delete_label', 'rename or merge categories and tags, delete unused ones', false],
     ['create_recurring · update_recurring · delete_recurring', 'rent, subscriptions, retainers', false],
-    ['create_loan', 'payments are then expense transactions linked to the loan', false],
+    ['create_loan · update_loan · delete_loan', 'payments are expense transactions linked to the loan; deleting keeps them', false],
   ]
 </script>
 
