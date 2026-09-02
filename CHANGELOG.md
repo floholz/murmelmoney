@@ -7,6 +7,8 @@ them into a version section when tagging a release.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-02
+
 ### Added
 - MCP server for AI agents at `/api/murmel/mcp` (streamable HTTP, stateless, built into the binary via the
   official Go SDK): tools for transactions (list/get/create/update/delete with name-based categories and tags),
@@ -67,7 +69,8 @@ First release.
 - CI workflow (svelte-check, go vet, build) and release workflow publishing binaries for
   Linux/macOS/Windows plus a multi-arch Docker image on ghcr.io.
 
-[Unreleased]: https://github.com/floholz/murmelmoney/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/floholz/murmelmoney/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/floholz/murmelmoney/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/floholz/murmelmoney/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/floholz/murmelmoney/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/floholz/murmelmoney/releases/tag/v1.0.0
